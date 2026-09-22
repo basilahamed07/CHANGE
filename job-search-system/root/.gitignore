@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Secrets & credentials — NEVER commit
+.env
+credentials/
+*.pem
+client_secret*.json
+
+# Personal data & generated artifacts
+data/
+applications/
+*.docx
+!templates/*.docx
+
+# Node (extension)
+node_modules/
+
+# Misc
+.worktrees/
+.DS_Store

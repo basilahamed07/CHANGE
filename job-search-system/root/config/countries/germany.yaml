@@ -1,0 +1,38 @@
+# Germany — country strategy (M3)
+# Schema is validated by app/country_registry.py. Drop a file like this in
+# config/countries/ and it is picked up with ZERO code changes.
+code: DE
+name: Germany
+enabled: true
+
+# Alias strings the location classifier should map to this country.
+# Must include the exact region string the classifier emits.
+aliases: [germany, deutschland]
+cities: [berlin, munich, frankfurt, hamburg, cologne, stuttgart, dusseldorf]
+
+# Allowed work arrangements for this country.
+work_types:
+  remote: true
+  hybrid: true
+  onsite: true
+
+# Visa/sponsorship reality for an international candidate.
+visa:
+  requires_sponsorship: true
+  sponsorship_keywords:
+    - visa sponsorship
+    - visa support
+    - work permit
+    - work visa
+    - blue card
+    - relocation support
+    - relocation package
+    - international applicants
+
+# Salary floor for eligibility (overrides global settings.min_salary).
+salary:
+  currency: EUR
+  min: 60000
+
+search:
+  extra_terms: []   # country-specific job search terms (M4 discovery uses these)

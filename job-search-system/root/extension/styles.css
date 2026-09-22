@@ -1,0 +1,703 @@
+/* CareerPulse AutoFill — content script styles
+   All classes prefixed with cp-autofill- to avoid conflicts */
+
+/* ─── Overlay ────────────────────────────────────────────── */
+
+#cp-autofill-overlay {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 280px;
+  background: rgba(24, 24, 27, 0.95);
+  border: 1px solid #3f3f46;
+  border-radius: 12px;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  z-index: 999999;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  transition: width 0.2s ease;
+}
+
+/* Compact pill: shrink width to fit summary text */
+#cp-autofill-overlay.cp-autofill-overlay-compact {
+  width: auto;
+  min-width: 180px;
+  max-width: 280px;
+}
+
+/* Expanded panel: widen for the field list */
+#cp-autofill-overlay.cp-autofill-overlay-expanded {
+  width: 320px;
+}
+
+.cp-autofill-overlay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(59, 130, 246, 0.15);
+  border-bottom: 1px solid #3f3f46;
+  cursor: grab;
+  user-select: none;
+}
+
+.cp-autofill-overlay-header:active {
+  cursor: grabbing;
+}
+
+.cp-autofill-overlay-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #3b82f6;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.cp-autofill-overlay-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.cp-autofill-overlay-actions button {
+  background: none;
+  border: none;
+  color: #71717a;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.cp-autofill-overlay-actions button:hover {
+  background: #27272a;
+  color: #fff;
+}
+
+.cp-autofill-overlay-body {
+  padding: 12px 14px;
+}
+
+.cp-autofill-overlay-status {
+  color: #a1a1aa;
+  line-height: 1.4;
+}
+
+/* ─── Compact pill ──────────────────────────────────────── */
+
+.cp-autofill-overlay-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.cp-autofill-overlay-pill:hover {
+  opacity: 0.85;
+}
+
+.cp-autofill-overlay-pill-check {
+  color: #22c55e;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cp-autofill-overlay-pill-text {
+  color: #d4d4d8;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.cp-autofill-overlay-pill-expand {
+  color: #71717a;
+  font-size: 10px;
+  margin-left: auto;
+}
+
+/* ─── Expanded field list ───────────────────────────────── */
+
+.cp-autofill-overlay-field-list {
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0 -14px;
+  padding: 0 14px;
+}
+
+.cp-autofill-overlay-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid #27272a;
+  position: relative;
+}
+
+.cp-autofill-overlay-field-row:last-child {
+  border-bottom: none;
+}
+
+.cp-autofill-overlay-field-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cp-autofill-overlay-field-label {
+  font-size: 11px;
+  color: #a1a1aa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cp-autofill-overlay-field-value {
+  font-size: 12px;
+  color: #e4e4e7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Status dots ───────────────────────────────────────── */
+
+.cp-autofill-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cp-autofill-status-dot.green {
+  background: #22c55e;
+}
+
+.cp-autofill-status-dot.yellow {
+  background: #eab308;
+}
+
+.cp-autofill-status-dot.gray {
+  background: #71717a;
+}
+
+/* ─── Undo button ───────────────────────────────────────── */
+
+.cp-autofill-undo-btn {
+  background: none;
+  border: none;
+  color: #71717a;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
+}
+
+.cp-autofill-overlay-field-row:hover .cp-autofill-undo-btn {
+  opacity: 1;
+}
+
+.cp-autofill-undo-btn:hover {
+  background: #27272a;
+  color: #f87171;
+}
+
+/* ─── Collapse link ─────────────────────────────────────── */
+
+.cp-autofill-overlay-collapse {
+  text-align: center;
+  padding: 6px 0 2px;
+  cursor: pointer;
+  color: #71717a;
+  font-size: 11px;
+}
+
+.cp-autofill-overlay-collapse:hover {
+  color: #a1a1aa;
+}
+
+/* ─── Field highlights ───────────────────────────────────── */
+
+.cp-autofill-filled {
+  box-shadow: 0 0 0 2px #22c55e60, 0 0 8px #22c55e30 !important;
+  outline: none !important;
+}
+
+.cp-autofill-review {
+  box-shadow: 0 0 0 2px #eab30860, 0 0 8px #eab30830 !important;
+  outline: none !important;
+}
+
+/* ─── Learn prompt modal ─────────────────────────────────── */
+
+#cp-autofill-learn-prompt {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  pointer-events: none;
+}
+
+.cp-autofill-learn-modal {
+  width: 360px;
+  max-width: 90vw;
+  max-height: 50vh;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 12px;
+  color: #fff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+
+.cp-autofill-learn-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #27272a;
+}
+
+.cp-autofill-learn-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.cp-autofill-learn-close {
+  background: none;
+  border: none;
+  color: #71717a;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.cp-autofill-learn-close:hover {
+  color: #fff;
+}
+
+.cp-autofill-learn-list {
+  padding: 4px 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.cp-autofill-learn-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 6px;
+  border-bottom: 1px solid #27272a;
+  cursor: pointer;
+}
+
+.cp-autofill-learn-item:last-child {
+  border-bottom: none;
+}
+
+.cp-autofill-learn-item input[type="checkbox"] {
+  margin-top: 2px;
+  accent-color: #3b82f6;
+}
+
+.cp-autofill-learn-item-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cp-autofill-learn-item-label {
+  font-size: 12px;
+  color: #71717a;
+}
+
+.cp-autofill-learn-item-value {
+  font-size: 13px;
+  color: #e4e4e7;
+  word-break: break-word;
+}
+
+.cp-autofill-learn-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #27272a;
+  justify-content: flex-end;
+}
+
+.cp-autofill-learn-save {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cp-autofill-learn-save:hover {
+  background: #2563eb;
+}
+
+.cp-autofill-learn-dismiss {
+  background: #27272a;
+  color: #a1a1aa;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cp-autofill-learn-dismiss:hover {
+  background: #3f3f46;
+  color: #fff;
+}
+
+/* ─── Auto-detection badge ──────────────────────────────────── */
+
+.cp-auto-badge {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  background: rgba(24, 24, 27, 0.92);
+  border: 1px solid #3b82f6;
+  border-radius: 999px;
+  color: #e4e4e7;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.25), 0 4px 20px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  animation: cp-badge-slide-in 0.35s ease-out;
+  cursor: default;
+  user-select: none;
+}
+
+.cp-auto-badge.cp-badge-medium {
+  opacity: 0.7;
+}
+
+.cp-auto-badge-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cp-auto-badge-main:hover {
+  color: #fff;
+}
+
+.cp-auto-badge-icon {
+  flex-shrink: 0;
+  color: #3b82f6;
+}
+
+.cp-auto-badge-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  background: none;
+  border: none;
+  border-left: 1px solid rgba(63, 63, 70, 0.6);
+  color: #71717a;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 0 999px 999px 0;
+  padding: 0;
+}
+
+.cp-auto-badge-dismiss:hover {
+  color: #fff;
+  background: rgba(63, 63, 70, 0.4);
+}
+
+@keyframes cp-badge-slide-in {
+  from {
+    transform: translateY(60px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ─── File upload helper ──────────────────────────────────── */
+
+.cp-autofill-upload-highlight {
+  box-shadow: 0 0 0 2px #eab30880, 0 0 12px #eab30840 !important;
+  outline: none !important;
+  border-radius: 4px;
+}
+
+.cp-autofill-upload-helper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: rgba(24, 24, 27, 0.95);
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  color: #e4e4e7;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 999998;
+  max-width: 320px;
+}
+
+.cp-autofill-upload-helper-text {
+  line-height: 1.4;
+  color: #a1a1aa;
+}
+
+.cp-autofill-upload-helper-btn {
+  align-self: flex-start;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cp-autofill-upload-helper-btn:hover {
+  background: #2563eb;
+}
+
+.cp-autofill-upload-helper-btn:disabled {
+  background: #52525b;
+  color: #a1a1aa;
+  cursor: not-allowed;
+}
+
+.cp-autofill-upload-helper-downloaded {
+  border-color: #22c55e60;
+}
+
+.cp-autofill-upload-helper-downloaded .cp-autofill-upload-helper-text {
+  color: #4ade80;
+}
+
+.cp-autofill-upload-helper-downloaded .cp-autofill-upload-helper-btn {
+  background: #22c55e;
+}
+
+.cp-autofill-upload-helper-downloaded .cp-autofill-upload-helper-btn:disabled {
+  background: #22c55e;
+  color: #fff;
+  cursor: default;
+}
+
+/* ─── Job Board Overlay: Save Button & Score Badge ───────── */
+
+.cp-overlay-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0 2px;
+}
+
+.cp-overlay-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, opacity 0.15s;
+  line-height: 1.4;
+}
+
+.cp-overlay-save-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.cp-overlay-save-btn:disabled {
+  cursor: default;
+}
+
+.cp-overlay-save-btn.cp-overlay-saving {
+  background: #52525b;
+  color: #a1a1aa;
+  cursor: wait;
+}
+
+.cp-overlay-save-btn.cp-overlay-saved {
+  background: #22c55e;
+  color: #fff;
+}
+
+.cp-overlay-save-btn.cp-overlay-error {
+  background: #ef4444;
+  color: #fff;
+}
+
+.cp-overlay-save-btn.cp-overlay-error:hover {
+  background: #dc2626;
+}
+
+/* ─── Score badge ────────────────────────────────────────── */
+
+.cp-overlay-score-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  z-index: 10;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.cp-overlay-score-badge.cp-overlay-score-high {
+  background: #22c55e;
+}
+
+.cp-overlay-score-badge.cp-overlay-score-mid {
+  background: #eab308;
+  color: #18181b;
+}
+
+.cp-overlay-score-badge.cp-overlay-score-low {
+  background: #71717a;
+}
+
+/* ─── Queue fill banner ─────────────────────────────────── */
+
+#cp-autofill-queue-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2147483647;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.cp-autofill-queue-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(24, 24, 27, 0.95);
+  border-bottom: 2px solid #3b82f6;
+  color: #e4e4e7;
+  font-size: 13px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.cp-autofill-queue-banner-progress {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 24px;
+  padding: 0 8px;
+  background: #3b82f6;
+  color: #fff;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.cp-autofill-queue-banner-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #d4d4d8;
+}
+
+.cp-autofill-queue-banner-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cp-autofill-queue-done-btn,
+.cp-autofill-queue-skip-btn,
+.cp-autofill-queue-cancel-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cp-autofill-queue-done-btn {
+  background: #22c55e;
+  color: #fff;
+}
+
+.cp-autofill-queue-done-btn:hover {
+  background: #16a34a;
+}
+
+.cp-autofill-queue-skip-btn {
+  background: #52525b;
+  color: #d4d4d8;
+}
+
+.cp-autofill-queue-skip-btn:hover {
+  background: #71717a;
+  color: #fff;
+}
+
+.cp-autofill-queue-cancel-btn {
+  background: none;
+  border: 1px solid #3f3f46;
+  color: #a1a1aa;
+}
+
+.cp-autofill-queue-cancel-btn:hover {
+  background: #27272a;
+  color: #fff;
+}

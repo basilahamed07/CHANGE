@@ -1,0 +1,16 @@
+# Workspace-level ignores (product lives in job-search-system/root/)
+# Reference repo clones keep their own git history — never embed them here
+references/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Python (belt & braces; root/ has its own .gitignore)
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/

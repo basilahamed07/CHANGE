@@ -1,0 +1,26 @@
+# Netherlands — country strategy (M3)
+code: NL
+name: Netherlands
+enabled: true
+aliases: [netherlands, holland]
+cities: [amsterdam, rotterdam, the hague, eindhoven, utrecht]
+work_types:
+  remote: true
+  hybrid: true
+  onsite: true
+visa:
+  requires_sponsorship: true
+  sponsorship_keywords:
+    - visa sponsorship
+    - visa support
+    - work permit
+    - highly skilled migrant
+    - highly skilled migrant visa
+    - relocation support
+    - relocation package
+    - international applicants
+salary:
+  currency: EUR
+  min: 55000
+search:
+  extra_terms: []

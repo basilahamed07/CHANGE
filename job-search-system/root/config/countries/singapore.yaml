@@ -1,0 +1,26 @@
+# Singapore — country strategy (M3)
+code: SG
+name: Singapore
+enabled: true
+aliases: [singapore]
+cities: [singapore]   # city-state; classifier maps 'singapore' directly
+work_types:
+  remote: true
+  hybrid: true
+  onsite: true
+visa:
+  requires_sponsorship: true
+  sponsorship_keywords:
+    - visa sponsorship
+    - ep application
+    - employment pass
+    - ep pass
+    - work pass
+    - relocation support
+    - relocation package
+    - international applicants
+salary:
+  currency: SGD
+  min: 90000
+search:
+  extra_terms: []

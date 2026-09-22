@@ -1,0 +1,27 @@
+# Ireland — country strategy (M3)
+code: IE
+name: Ireland
+enabled: true
+aliases: [ireland, republic of ireland]
+cities: [dublin, cork, galway, limerick]
+work_types:
+  remote: true
+  hybrid: true
+  onsite: true
+visa:
+  requires_sponsorship: true
+  sponsorship_keywords:
+    - visa sponsorship
+    - visa support
+    - work permit
+    - work authorisation
+    - critical skills employment permit
+    - stamp 4
+    - relocation support
+    - relocation package
+    - international applicants
+salary:
+  currency: EUR
+  min: 55000
+search:
+  extra_terms: []

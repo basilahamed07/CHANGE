@@ -1,0 +1,32 @@
+code: AE
+name: United Arab Emirates
+region: UAE
+enabled: false
+aliases:
+- uae
+- united arab emirates
+- emirates
+cities:
+- dubai
+- abu dhabi
+- sharjah
+work_types:
+  remote: true
+  hybrid: true
+  onsite: true
+visa:
+  requires_sponsorship: true
+  sponsorship_keywords:
+  - visa sponsorship
+  - employment visa
+  - work permit
+  - residency visa
+  - relocation support
+  - relocation package
+  - tax-free salary
+  - international applicants
+salary:
+  currency: AED
+  min: 240000
+search:
+  extra_terms: []

@@ -1,0 +1,28 @@
+# United Kingdom — country strategy (M3)
+code: GB
+name: United Kingdom
+region: UK   # canonical classifier string (jobs.location_region stores this)
+enabled: true
+aliases: [uk, united kingdom, britain, great britain]
+cities: [london, manchester, edinburgh, bristol, cambridge, oxford, birmingham, glasgow]
+work_types:
+  remote: true
+  hybrid: true
+  onsite: true
+visa:
+  requires_sponsorship: true
+  sponsorship_keywords:
+    - visa sponsorship
+    - visa support
+    - skilled worker visa
+    - work permit
+    - certificate of sponsorship
+    - right to work
+    - relocation support
+    - relocation package
+    - international applicants
+salary:
+  currency: GBP
+  min: 45000
+search:
+  extra_terms: []
