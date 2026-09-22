@@ -80,23 +80,54 @@ Rules for every milestone:
   Verification: 14 eligibility unit tests incl. full Critical #3 matrix, 723 total
   green, E2E eligibility 8/8 (incl. CRITICAL #3 via API), full E2E 98/98 / 0 FAIL.
 
-## M6 — Hybrid matching
+## M6 — Hybrid matching — **DONE 2026-09-23 (E2E-verified, Rule #5)**
 - Deterministic components (skill, experience, role, location, visa, recency, preference) + TF-IDF ATS overlap (reimplemented) + RAG semantic component.
 - Configurable weights; output: overall_score, component_scores, matched/missing requirements, hard_blockers, advantages, explanation. Python owns arithmetic.
 - RAG layer: EmbeddingProvider abstraction (local default), collections over VERIFIED evidence only; retrieval feeds only relevant evidence into prompts.
 - Tests: weight math, determinism (same inputs ⇒ same components), hard-blocker short-circuit, retrieval relevance sanity.
+- Delivered: `app/hybrid_matcher.py` (6 components with normalized weights — skills .35,
+  role .15, location .10, visa .10, recency .10, semantic .20; hard-blocker short-circuit
+  NO_SPONSORSHIP_STATED / DO_NOT_USE_SKILL_* capping at 25; pure-Python TF-IDF),
+  RagProvider local-default + optional OpenAI embeddings, `app/matching_service.py`
+  (CandidateProfile from VERIFIED evidence only, RAW skill values for phrase matching),
+  `app/routers/matching.py` (status/score/score-all/explain/config/top-jobs),
+  job_scores.component_scores + hard_blockers, search_config.hybrid_weights + prefs.
+  Scheduler: hybrid scores whatever AI could not — pool never left unscored.
+  Bugs fixed: idf ordering; space-collapsing boundary matcher; normalized skills
+  breaking phrase matching; Country.visa attribute.
+  Verification: 24 unit tests → **747 total green**; E2E section 16d 17/17,
+  full harness **116/116, 0 FAIL**; report docs/M6_E2E_TEST_REPORT.md.
 
-## M7 — Company + contact research
+## M7 — Company + contact research — **DONE 2026-09-23 (E2E-verified, Rule #5)**
 - Extend company_research with cached rich fields (domain, careers URL, LinkedIn, industry, AI/product clues, evidence links).
 - ContactProvider interface + Hunter adapter (port), Apollo adapter (port), ManualResearch provider.
 - Contact model: role_type taxonomy, confidence, relationship_to_job, why-selected rationale; title classification ported.
 - Provider fallback + per-provider rate limiting; research cache (no re-research per job).
 - Tests: provider mocks, classification heuristics, fallback on provider failure, cache hits.
+- Delivered: `app/contact_providers.py` (ContactProvider interface — find() never raises;
+  Manual first → Hunter → Apollo → WebSearch fallback chain; deterministic role taxonomy
+  recruiter/hiring_manager/referrer/other + confidence 0–100 with machine-readable
+  why_selected; per-provider rate limiting; ContactResearchService cache-first 7d TTL,
+  select_candidate with contact email-dedup), `app/company_enrichment.py` (careers/
+  LinkedIn/AI-clue regex discovery, 30d cache), `app/routers/research.py`
+  (/api/research: contacts research/select, providers, company cache-first).
+  DB: contact_research snapshot table; companies + careers_url/linkedin_url/ai_clues/
+  research_status/researched_at (+ allowlist). Bugs fixed: harness await-.json();
+  companies column allowlist. Verification: 29 unit tests → **776 total green**;
+  E2E 16e 13/13, full harness **129/129, 0 FAIL**; report docs/M7_E2E_TEST_REPORT.md.
 
-## M8 — Application package generation
+## M8 — Application package generation — **DONE 2026-09-23 (E2E-verified, Rule #5)**
 - Application Builder: resume tailoring + cover letter bound to evidence; verifier-gate (generate → EvidenceChecker → regenerate-on-fail → human review).
 - DOCX-first renderer (modular for PDF); Phase 19 directory layout with metadata.json (hashes, profile version, evidence-check result, model, status); hash-based no-op regeneration.
 - Tests: package idempotency (unchanged inputs ⇒ no rewrite), evidence gate integration, DOCX structure.
+- Delivered: `app/application_builder.py` (ApplicationBuilder + PackageInputs.
+  fingerprint() over ALL generation inputs ⇒ noop/rebuilt semantics; EvidenceViolationError
+  refuses unverified text — Rule 5 last line; packages born ready_for_review — Rule 6),
+  `app/routers/packages.py` (build w/ AI + evidence gate; ?refresh=true ZERO-AI repackage
+  of stored text — quota-proof, proven live; list/read/download with 5-file allowlist).
+  DB: applications package_dir/fingerprint/status. Verification: 12 unit tests →
+  **788 total green**; E2E 16f 8/8, full harness **137/137, 0 FAIL**;
+  report docs/M8_E2E_TEST_REPORT.md.
 
 ## M9 — Outreach + Gmail drafts
 - Outreach engine (recruiter / hiring manager / referral variants; channels LinkedIn note/DM, email, follow-up); sequences in config (Phase 21) with anti-spam caps and dedup across duplicate jobs.

@@ -12,10 +12,18 @@ credentials/
 client_secret*.json
 
 # Personal data & generated artifacts
-data/
+# data/* is ignored EXCEPT the M2 evidence templates (data/profile/): they are
+# config-like (all-UNVERIFIED claim skeletons, no secrets, no resume text) and
+# the system fails closed without them on a fresh clone.
+data/*
+!data/profile/
+!data/profile/**
 applications/
 *.docx
 !templates/*.docx
+
+# Runtime artifacts (auto-generated, never needed in git)
+config/countries/.backups/
 
 # Node (extension)
 node_modules/

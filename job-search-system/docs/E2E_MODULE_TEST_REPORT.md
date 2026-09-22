@@ -1,11 +1,11 @@
 # E2E MODULE TEST REPORT — jobagent website, every module
 
-**Date:** 2026-09-22 10:14 UTC  
+**Date:** 2026-09-22 20:26 UTC  
 **Method:** isolated instance of the real app (fresh DB, real free AI model `poolside/laguna-s-2.1:free`, evidence profile seeded from Basil's actual resume). Every module exercised through its public HTTP API with real flows — real .docx upload, real AI scoring/tailoring/cover-letter/interview-prep, real evidence-gate enforcement.
 
 **AI live-run:** NO — free-tier quota exhausted or unreachable; AI checks recorded as SKIP  
 
-## RESULT: **98/98 checks passed** (88 PASS · 10 SKIP · 0 FAIL)
+## RESULT: **137/137 checks passed** (127 PASS · 10 SKIP · 0 FAIL)
 
 ## All checks by module
 
@@ -30,8 +30,8 @@
 
 ### evidence — 5/5
 - ✅ /api/evidence
-- ✅ claims loaded — {'VERIFIED': 4, 'UNVERIFIED': 1, 'DISPUTED': 0, 'DO_NOT_USE': 0}
-- ✅ verified-backed text PASSES gate — {"ok":true,"failures":[],"warnings":[],"checked_at":"2026-09-22T10:14:20.319461+00:00"}
+- ✅ claims loaded — {'VERIFIED': 4, 'UNVERIFIED': 1, 'DISPUTED': 0, 'DO_NOT_USE': 1}
+- ✅ verified-backed text PASSES gate — {"ok":true,"failures":[],"warnings":[],"checked_at":"2026-09-22T20:25:23.155438+00:00"}
 - ✅ fabricated text BLOCKED by gate — ['fabricated_number', 'unsupported_skill']
 - ✅ reload
 
@@ -150,6 +150,51 @@
 - ✅ eligible job returns OK — ['OK']
 - ✅ freshness endpoint returns evidence — VERIFIED_FRESH
 - ✅ unknown date stays DATE_UNKNOWN (Critical #3) — DATE_UNKNOWN
+
+### matching — 18/18
+- ✅ /api/matching/status
+- ✅ engine status: verified skills + corpus loaded from evidence — skills=3, corpus=4, rag=RagProvider
+- ✅ default weights normalized (sum=1.0, 6 components) — {'skills': 0.35, 'role': 0.15, 'location': 0.1, 'visa': 0.1, 'recency': 0.1, 'semantic': 0.2}
+- ✅ score-all runs over unscored pool (zero AI cost) — scored=12/12, avg=39.0
+- ✅ score job: overall + all 6 components returned — overall=76, comps={'skills': 100.0, 'role': 50.0, 'location': 100.0, 'visa': 40.0, 'recency': 100.0,
+- ✅ AI job: verified skills matched, requirement lists present — matched=0, missing=1
+- ✅ AI job scores high on skills (Python/LangChain/RAG in listing) — skills=100.0
+- ✅ deterministic: rescore returns identical overall score — 76 vs 76
+- ✅ noise job (Graphic Designer) ranks below AI job on skills — noise_skills=0.0 < ai_skills=100.0
+- ✅ BLOCKER: no-sponsorship job capped (NO_SPONSORSHIP_STATED) — blockers=['NO_SPONSORSHIP_STATED'], score=25
+- ✅ BLOCKER: DO_NOT_USE skill (COBOL) capped, Python still matched — blockers=['DO_NOT_USE_SKILL_COBOL'], score=25
+- ✅ config PUT persists prefs — {"ok":true,"weights":null,"prefs":{"prefers_remote":true,"requires_sponsorship":
+- ✅ wider prefs: no-sponsorship job no longer blocked — blockers=[], score=53
+- ✅ weights PUT normalized to sum=1.0 — {'skills': 0.5797101449275363, 'role': 0.043478260869565216, 'location': 0.028985507246376812, 'visa
+- ✅ hybrid scores persisted with component breakdowns — hybrid_scored_jobs=14
+- ✅ explain endpoint returns stored component breakdown — overall=76
+- ✅ top-jobs ranked desc with component breakdowns — 14 jobs, top=[76, 53, 50]
+- ✅ AI job ranks above noise job in the pool — ai_idx=0, noise_idx=8
+
+### research — 13/13
+- ✅ /api/research/providers
+- ✅ provider chain exposed (manual/web always, hunter/apollo config-dependent) — {'manual': True, 'hunter': False, 'apollo': False, 'web_search': True}
+- ✅ seed manual contact (Basil's saved contact) — {"ok":true,"contact":{"id":1,"name":"Jane Doe","email":"jane.doe@e2eprobecorp.co
+- ✅ research: manual provider found saved contact (status=found) — status=found, provider=manual
+- ✅ candidate classified + scored deterministically — role=recruiter, conf=100
+- ✅ cached research returned with candidates intact — 1 candidates
+- ✅ select candidate -> job gains hiring manager email — {"job_id":18,"contact_id":1,"candidate":{"name":"Jane Doe","email":"jane.doe@e2e
+- ✅ job.hiring_manager_email persisted — jane.doe@e2eprobecorp.com
+- ✅ double-select does NOT duplicate the contact — 1 jane.doe contacts
+- ✅ force=true re-runs the chain (cache bypassed) — cache_hit=False
+- ✅ company research 200 + persisted (graceful when network blocked) — status=not_found, cache_hit=False
+- ✅ company cache row readable + fresh — fresh=True
+- ✅ second company call within TTL = cache hit — cache_hit=True
+
+### packages — 8/8
+- ✅ build (refresh) packages stored text through the evidence gate — action=rebuilt, status=200
+- ✅ IDEMPOTENT: identical inputs => action=noop (no rewrite) — action=noop
+- ✅ package row + on-disk metadata with hashes + status — status=ready_for_review, files=4
+- ✅ resume.docx downloads (real OOXML: PK zip header) — 37587 bytes
+- ✅ metadata.json downloads — 200
+- ✅ unknown file rejected (400) — 400
+- ✅ list packages includes the built job — 1 packages
+- ✅ no package for untouched job -> 404 — 404
 
 ### flags — 2/2
 - ✅ salary estimate disabled (404) — 404

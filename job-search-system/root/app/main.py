@@ -202,7 +202,14 @@ async def lifespan(app: FastAPI):
                 await run_location_classification(app.state.bg_db, app.state.ai_client)
                 await app.state.score_unscored(app.state.bg_db)
             except Exception:
-                logger.exception("Scheduled scoring failed")
+                logger.exception("AI scoring failed")
+            # M6: free deterministic hybrid baseline for anything AI could not
+            # score (quota exhausted / provider down). Never blocks on AI.
+            try:
+                from app.matching_service import score_all_unscored
+                await score_all_unscored(app.state, app.state.bg_db)
+            except Exception:
+                logger.exception("Hybrid baseline scoring failed")
 
         async def scheduled_maintenance():
             try:
@@ -472,6 +479,12 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
     app.include_router(discovery_router.router)
     from app.routers import eligibility as eligibility_router
     app.include_router(eligibility_router.router)
+    from app.routers import matching as matching_router
+    app.include_router(matching_router.router)
+    from app.routers import research as research_router
+    app.include_router(research_router.router)
+    from app.routers import packages as packages_router
+    app.include_router(packages_router.router)
 
     # --- Static files ---
     if not testing:

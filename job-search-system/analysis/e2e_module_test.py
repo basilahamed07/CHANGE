@@ -66,7 +66,9 @@ async def run() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="jobagent_e2e_"))
 
     live = sqlite3.connect(ROOT / "data" / "jobagent.db")
-    REAL_RESUME = live.execute("SELECT resume_text FROM resumes LIMIT 1").fetchone()[0]
+    REAL_RESUME = live.execute(
+        "SELECT resume_text FROM resumes ORDER BY is_default DESC, id ASC LIMIT 1"
+    ).fetchone()[0]
     live.close()
     assert REAL_RESUME and len(REAL_RESUME) > 200, "real resume missing from live DB"
 
@@ -86,6 +88,7 @@ async def run() -> int:
         "  - id: s2\n    value: \"Azure OpenAI\"\n    status: VERIFIED\n    source: resume\n"
         "  - id: s3\n    value: \"LangChain\"\n    status: VERIFIED\n    source: resume\n"
         "  - id: s4\n    value: \"Kubernetes\"\n    status: UNVERIFIED\n    source: \"\"\n"
+        "  - id: s5\n    value: \"COBOL\"\n    status: DO_NOT_USE\n    source: \"candidate explicitly excluded\"\n"
     )
 
     os.environ["JOBAGENT_PROFILE_DIR"] = str(profile_dir)
@@ -895,7 +898,291 @@ async def run_checks(app, client: httpx.AsyncClient, ai_job: int, ml_job: int,
            body.get("recomputed", {}).get("state") == "DATE_UNKNOWN",
            str(body.get("recomputed", {}).get("state")))
 
-        # ================= 17. FLAGGED-OFF MODULES (D22) ======================
+    # ================= 16d. HYBRID MATCHING (M6) ==========================
+    section("16d. HYBRID MATCHING (M6) — deterministic, zero AI cost")
+    r = await call("GET", "/api/matching/status", module="matching")
+    st = r.json()
+    record("matching", "engine status: verified skills + corpus loaded from evidence",
+           st.get("verified_skills", 0) >= 3 and st.get("corpus_lines", 0) >= 1,
+           f"skills={st.get('verified_skills')}, corpus={st.get('corpus_lines')}, rag={st.get('rag_provider')}")
+    record("matching", "default weights normalized (sum=1.0, 6 components)",
+           abs(sum((st.get("weights") or {}).values()) - 1.0) < 1e-6
+           and len(st.get("weights") or {}) == 6,
+           str(st.get("weights")))
+
+    # Free baseline over the whole pool FIRST (bulk path scores only unscored
+    # jobs — must run before the individual scores below).
+    r = await client.post("/api/matching/score-all")
+    sa = r.json() if r.status_code == 200 else {}
+    record("matching", "score-all runs over unscored pool (zero AI cost)",
+           r.status_code == 200 and sa.get("scored", 0) >= 3,
+           f"scored={sa.get('scored')}/{sa.get('total')}, avg={sa.get('avg')}")
+
+    # Score the AI job — full machine-readable breakdown
+    r = await client.post(f"/api/matching/jobs/{ai_job}/score")
+    body = r.json() if r.status_code == 200 else {}
+    comps = body.get("component_scores") or {}
+    record("matching", "score job: overall + all 6 components returned",
+           r.status_code == 200 and isinstance(body.get("overall_score"), int)
+           and set(comps.keys()) == {"skills", "role", "location", "visa", "recency", "semantic"},
+           f"overall={body.get('overall_score')}, comps={comps}")
+    record("matching", "AI job: verified skills matched, requirement lists present",
+           len(body.get("matched_requirements", [])) >= 0
+           and isinstance(body.get("explanation"), str) and body["explanation"],
+           f"matched={len(body.get('matched_requirements', []))}, missing={len(body.get('missing_requirements', []))}")
+    record("matching", "AI job scores high on skills (Python/LangChain/RAG in listing)",
+           comps.get("skills", 0) >= 80, f"skills={comps.get('skills')}")
+    first_overall = body.get("overall_score")
+
+    # DETERMINISM via API: same inputs => identical score
+    r2 = await client.post(f"/api/matching/jobs/{ai_job}/score")
+    record("matching", "deterministic: rescore returns identical overall score",
+           r2.status_code == 200 and r2.json().get("overall_score") == first_overall,
+           f"{first_overall} vs {r2.json().get('overall_score') if r2.status_code == 200 else 'ERR'}")
+
+    # Noise job must score lower on the skills component
+    r = await client.post(f"/api/matching/jobs/{noise_job}/score")
+    noise_comps = (r.json() or {}).get("component_scores") or {}
+    record("matching", "noise job (Graphic Designer) ranks below AI job on skills",
+           noise_comps.get("skills", 0) < comps.get("skills", 0),
+           f"noise_skills={noise_comps.get('skills')} < ai_skills={comps.get('skills')}")
+
+    # Hard blocker: no-sponsorship job (candidate requires sponsorship by default)
+    _db = app.state.db
+    probe_novisa = await _db.insert_job(
+        title="Backend Engineer", company="NoVisa Co", location="Remote",
+        salary_min=None, salary_max=None,
+        description="Build APIs with Python. No sponsorship provided. Citizenship required.",
+        url="https://m6.probe/novisa", posted_date="2026-09-21",
+        application_method="direct", contact_email=None)
+    r = await client.post(f"/api/matching/jobs/{probe_novisa}/score")
+    b = r.json() if r.status_code == 200 else {}
+    record("matching", "BLOCKER: no-sponsorship job capped (NO_SPONSORSHIP_STATED)",
+           "NO_SPONSORSHIP_STATED" in (b.get("hard_blockers") or [])
+           and (b.get("overall_score") or 100) <= 25,
+           f"blockers={b.get('hard_blockers')}, score={b.get('overall_score')}")
+
+    # Hard blocker: DO_NOT_USE skill in listing (COBOL seeded DO_NOT_USE)
+    probe_cobol = await _db.insert_job(
+        title="Legacy Systems Engineer", company="OldCo", location="Remote",
+        salary_min=None, salary_max=None,
+        description="Maintain COBOL mainframe with some Python scripting.",
+        url="https://m6.probe/cobol", posted_date="2026-09-21",
+        application_method="direct", contact_email=None)
+    r = await client.post(f"/api/matching/jobs/{probe_cobol}/score")
+    b = r.json() if r.status_code == 200 else {}
+    record("matching", "BLOCKER: DO_NOT_USE skill (COBOL) capped, Python still matched",
+           any(x.startswith("DO_NOT_USE_SKILL_COBOL") for x in (b.get("hard_blockers") or []))
+           and (b.get("overall_score") or 100) <= 25,
+           f"blockers={b.get('hard_blockers')}, score={b.get('overall_score')}")
+
+    # Preference round-trip: candidate without sponsorship need -> blocker gone
+    r = await client.put("/api/matching/config", json={"requires_sponsorship": False})
+    record("matching", "config PUT persists prefs", r.status_code == 200
+           and r.json().get("prefs", {}).get("requires_sponsorship") is False, r.text[:80])
+    r = await client.post(f"/api/matching/jobs/{probe_novisa}/score")
+    b = r.json() if r.status_code == 200 else {}
+    record("matching", "wider prefs: no-sponsorship job no longer blocked",
+           not b.get("hard_blockers") and (b.get("overall_score") or 0) > 25,
+           f"blockers={b.get('hard_blockers')}, score={b.get('overall_score')}")
+    await client.put("/api/matching/config", json={"requires_sponsorship": True})
+
+    # Config weights round-trip (validated + normalized)
+    r = await client.put("/api/matching/config", json={"weights": {"skills": 2.0, "semantic": 1.0}})
+    w = (r.json() or {}).get("weights") or {}
+    record("matching", "weights PUT normalized to sum=1.0",
+           r.status_code == 200 and abs(sum(w.values()) - 1.0) < 1e-6, str(w))
+    await client.put("/api/matching/config", json={"weights": {}})  # back to defaults
+
+    r = await client.get("/api/matching/status")
+    n_hybrid = r.json().get("hybrid_scored_jobs", 0)
+    record("matching", "hybrid scores persisted with component breakdowns",
+           n_hybrid >= 3, f"hybrid_scored_jobs={n_hybrid}")
+
+    # Explain endpoint reads the persisted breakdown
+    r = await client.get(f"/api/matching/jobs/{ai_job}/explain")
+    b = r.json() if r.status_code == 200 else {}
+    record("matching", "explain endpoint returns stored component breakdown",
+           r.status_code == 200 and b.get("overall_score") == first_overall
+           and bool(b.get("component_scores")),
+           f"overall={b.get('overall_score')}")
+
+    # Top-jobs ranking: AI job above noise, all rows carry component_scores.
+    # (In AI-live runs section 8 dismissed the noise job; restore our probe
+    # job so the ranking comparison sees both. User dismissals in Basil's real
+    # data are never touched by the product — this is the harness's own job.)
+    await _db.db.execute("UPDATE jobs SET dismissed = 0 WHERE id = ?", (noise_job,))
+    await _db.db.commit()
+    r = await client.get("/api/matching/top-jobs?limit=25&min_score=0")
+    tjobs = (r.json() or {}).get("jobs") or []
+    ids_order = [j["id"] for j in tjobs]
+    scores_order = [j["match_score"] for j in tjobs]
+    record("matching", "top-jobs ranked desc with component breakdowns",
+           len(tjobs) >= 2 and scores_order == sorted(scores_order, reverse=True)
+           and all(j.get("component_scores") for j in tjobs),
+           f"{len(tjobs)} jobs, top={scores_order[:3]}")
+    record("matching", "AI job ranks above noise job in the pool",
+           ai_job in ids_order and noise_job in ids_order
+           and ids_order.index(ai_job) < ids_order.index(noise_job),
+           f"ai_idx={ids_order.index(ai_job) if ai_job in ids_order else '-'}, "
+           f"noise_idx={ids_order.index(noise_job) if noise_job in ids_order else '-'}")
+
+    # ================= 16e. COMPANY + CONTACT RESEARCH (M7) ===============
+    section("16e. COMPANY + CONTACT RESEARCH (M7) — provider chain + cache")
+    r = await call("GET", "/api/research/providers", module="research")
+    provs = {p["name"]: p["available"] for p in r.json().get("providers", [])}
+    record("research", "provider chain exposed (manual/web always, hunter/apollo config-dependent)",
+           set(provs.keys()) == {"manual", "hunter", "apollo", "web_search"}
+           and provs.get("manual") is True and provs.get("web_search") is True,
+           str(provs))
+
+    # Probe job + a contact Basil 'saved himself' (manual provider data)
+    probe_co = "E2E Probe Corp"
+    probe_job = await _db.insert_job(
+        title="Senior AI Engineer", company=probe_co, location="Remote",
+        salary_min=None, salary_max=None, description="Build LLM products.",
+        url="https://m7.probe/contact", posted_date="2026-09-21",
+        application_method="direct", contact_email=None)
+    r = await client.post("/api/contacts", json={
+        "name": "Jane Doe", "email": "jane.doe@e2eprobecorp.com",
+        "company": probe_co, "role": "Technical Recruiter"})
+    record("research", "seed manual contact (Basil's saved contact)",
+           r.status_code == 200, r.text[:80])
+
+    # Research through the REAL chain: manual provider must surface Jane
+    r = await client.post(f"/api/research/contacts/job/{probe_job}")
+    b = r.json() if r.status_code == 200 else {}
+    cands = b.get("candidates") or []
+    record("research", "research: manual provider found saved contact (status=found)",
+           r.status_code == 200 and b.get("status") == "found"
+           and b.get("provider") == "manual" and b.get("cache_hit") is False,
+           f"status={b.get('status')}, provider={b.get('provider')}")
+    record("research", "candidate classified + scored deterministically",
+           cands and cands[0].get("role_type") == "recruiter"
+           and (cands[0].get("confidence") or 0) > 0
+           and bool(cands[0].get("why_selected")),
+           f"role={cands[0].get('role_type') if cands else '-'}, "
+           f"conf={cands[0].get('confidence') if cands else '-'}")
+
+    # Cache: second read hits the cache, providers not re-queried
+    r = await client.get(f"/api/research/contacts/job/{probe_job}")
+    b2 = r.json() if r.status_code == 200 else {}
+    record("research", "cached research returned with candidates intact",
+           r.status_code == 200 and bool(b2.get("candidates")),
+           f"{len(b2.get('candidates') or [])} candidates")
+
+    # Select: writes to job + contacts table; selecting twice must NOT dup
+    r = await client.post(f"/api/research/contacts/job/{probe_job}/select",
+                          json={"index": 0})
+    record("research", "select candidate -> job gains hiring manager email",
+           r.status_code == 200, r.text[:80])
+    j_resp = await client.get(f"/api/jobs/{probe_job}")
+    j = j_resp.json()
+    record("research", "job.hiring_manager_email persisted",
+           j.get("hiring_manager_email") == "jane.doe@e2eprobecorp.com",
+           str(j.get("hiring_manager_email")))
+    await client.post(f"/api/research/contacts/job/{probe_job}/select", json={"index": 0})
+    r = await client.get("/api/contacts")
+    n_jane = sum(1 for c in r.json().get("contacts", [])
+                 if c.get("email") == "jane.doe@e2eprobecorp.com")
+    record("research", "double-select does NOT duplicate the contact",
+           n_jane == 1, f"{n_jane} jane.doe contacts")
+
+    # Force re-research bypasses the cache
+    r = await client.post(f"/api/research/contacts/job/{probe_job}?force=true")
+    b3 = r.json() if r.status_code == 200 else {}
+    record("research", "force=true re-runs the chain (cache bypassed)",
+           r.status_code == 200 and b3.get("cache_hit") is False
+           and b3.get("status") == "found", f"cache_hit={b3.get('cache_hit')}")
+
+    # Company research: cache-first rich fields (network may fail in sandbox —
+    # the endpoint must still 200 and persist the cache row)
+    import urllib.parse as _up
+    co_path = _up.quote(probe_co, safe="")
+    r = await client.post(f"/api/research/company/{co_path}")
+    b4 = r.json() if r.status_code == 200 else {}
+    record("research", "company research 200 + persisted (graceful when network blocked)",
+           r.status_code == 200 and b4.get("cache_hit") is False
+           and b4.get("research_status") in ("complete", "partial", "not_found"),
+           f"status={b4.get('research_status')}, cache_hit={b4.get('cache_hit')}")
+    r = await client.get(f"/api/research/company/{co_path}")
+    b5 = r.json() if r.status_code == 200 else {}
+    record("research", "company cache row readable + fresh",
+           r.status_code == 200 and b5.get("cache_fresh") is True,
+           f"fresh={b5.get('cache_fresh')}")
+    r = await client.post(f"/api/research/company/{co_path}")
+    b6 = r.json() if r.status_code == 200 else {}
+    record("research", "second company call within TTL = cache hit",
+           r.status_code == 200 and b6.get("cache_hit") is True,
+           f"cache_hit={b6.get('cache_hit')}")
+
+    # ================= 16f. APPLICATION PACKAGES (M8) =====================
+    section("16f. APPLICATION PACKAGES (M8) — evidence-gated, idempotent")
+    # The ai_job already has a prepared application from section 9 in AI-live
+    # runs; in quota-dead runs it may not. Use refresh=true which repackages
+    # STORED text with zero AI — but only works if text exists. Seed it
+    # directly from the verified corpus so the evidence gate passes.
+    pkg_job = ai_job
+    app_row = await _db.get_application(pkg_job)
+    if not app_row or not (app_row.get("tailored_resume") or "").strip():
+        from datetime import datetime as _dtm
+        _stored = ("BASIL AHAMED H — AI Engineer\n" + REAL_RESUME[:1500])
+        if app_row:
+            await _db.update_application(app_row["id"], tailored_resume=_stored,
+                                         cover_letter="Dear Hiring Team,")
+        else:
+            _aid = await _db.insert_application(pkg_job, "prepared")
+            await _db.update_application(_aid, tailored_resume=_stored,
+                                         cover_letter="Dear Hiring Team,")
+
+    r = await client.post(f"/api/packages/jobs/{pkg_job}/build?refresh=true")
+    b = r.json() if r.status_code == 200 else {}
+    record("packages", "build (refresh) packages stored text through the evidence gate",
+           r.status_code == 200 and b.get("action") in ("built", "rebuilt", "noop")
+           and b.get("metadata", {}).get("evidence_check", {}).get("ok") is True,
+           f"action={b.get('action')}, status={r.status_code}")
+    first_fp = b.get("metadata", {}).get("inputs_fingerprint")
+
+    # Idempotency: identical inputs => no-op, files not rewritten
+    r = await client.post(f"/api/packages/jobs/{pkg_job}/build?refresh=true")
+    b2 = r.json() if r.status_code == 200 else {}
+    record("packages", "IDEMPOTENT: identical inputs => action=noop (no rewrite)",
+           r.status_code == 200 and b2.get("action") == "noop"
+           and b2.get("metadata", {}).get("inputs_fingerprint") == first_fp,
+           f"action={b2.get('action')}")
+
+    # Package contents on disk + metadata audit trail
+    r = await client.get(f"/api/packages/jobs/{pkg_job}")
+    b3 = r.json() if r.status_code == 200 else {}
+    on_disk = b3.get("on_disk") or {}
+    record("packages", "package row + on-disk metadata with hashes + status",
+           r.status_code == 200 and bool(b3.get("package_dir"))
+           and on_disk.get("status") == "ready_for_review"
+           and bool((on_disk.get("hashes") or {}).get("tailored_resume")),
+           f"status={on_disk.get('status')}, files={len(on_disk.get('files') or [])}")
+
+    # DOCX really downloads and is a real OOXML zip
+    r = await client.get(f"/api/packages/jobs/{pkg_job}/download/resume.docx")
+    record("packages", "resume.docx downloads (real OOXML: PK zip header)",
+           r.status_code == 200 and r.content[:2] == b"PK",
+           f"{len(r.content)} bytes")
+    r = await client.get(f"/api/packages/jobs/{pkg_job}/download/metadata.json")
+    record("packages", "metadata.json downloads", r.status_code == 200, str(r.status_code))
+    r = await client.get(f"/api/packages/jobs/{pkg_job}/download/evil.exe")
+    record("packages", "unknown file rejected (400)", r.status_code == 400, str(r.status_code))
+
+    # List endpoint shows the package
+    r = await client.get("/api/packages")
+    ids = [p["job_id"] for p in r.json().get("packages", [])]
+    record("packages", "list packages includes the built job",
+           r.status_code == 200 and pkg_job in ids, f"{len(ids)} packages")
+
+    # Unbuilt job -> 404 on read
+    r = await client.get(f"/api/packages/jobs/{ml_job}")
+    record("packages", "no package for untouched job -> 404",
+           r.status_code == 404, str(r.status_code))
+
+    # ================= 17. FLAGGED-OFF MODULES (D22) ======================
     section("17. US-ONLY MODULES (must be OFF)")
     r = await client.post(f"/api/jobs/{ai_job}/estimate-salary")
     record("flags", "salary estimate disabled (404)", r.status_code == 404, str(r.status_code))

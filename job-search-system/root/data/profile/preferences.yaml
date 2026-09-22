@@ -1,0 +1,23 @@
+# Job-search preferences — feeds eligibility + matching (M3/M6). These are
+# candidate-stated preferences, not factual claims; they gate what the system
+# pursues, never what appears as experience on a resume.
+
+claims:
+  - id: target_roles
+    value: "AI Engineer, Generative AI Engineer, LLM Engineer, RAG Engineer, Agentic AI Engineer, AI Application Developer, Python AI Developer, Backend AI Engineer"
+    status: VERIFIED
+    source: "Candidate decision"
+    last_verified: "2026-09-21"
+    notes: "Basil's stated target roles from the master brief."
+
+  - id: target_countries
+    value: "Singapore, Germany, UAE, Netherlands, Ireland, UK"
+    status: VERIFIED
+    source: "Candidate decision"
+    last_verified: "2026-09-21"
+
+  - id: remote_preference
+    value: "Remote or hybrid preferred; onsite considered for strong roles"
+    status: VERIFIED
+    source: "Candidate decision"
+    last_verified: "2026-09-21"

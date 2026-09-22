@@ -90,6 +90,7 @@ _COLUMN_ALLOWLISTS = {
         "status", "tailored_resume", "cover_letter", "email_draft", "applied_at",
         "notes", "rejected_at", "offered_at", "withdrawn_at",
         "response_received_at", "response_type", "days_to_response",
+        "package_dir", "package_fingerprint", "package_status",
     },
     "work_history": {
         "user_id", "company", "job_title", "location_city", "location_state",
@@ -125,6 +126,9 @@ _COLUMN_ALLOWLISTS = {
     "companies": {
         "name", "normalized_name", "website", "description", "size",
         "industry", "glassdoor_rating", "updated_at",
+        # M7 rich research cache fields
+        "careers_url", "linkedin_url", "ai_clues", "research_status",
+        "researched_at",
     },
     "jobs": {
         "title", "company", "location", "salary_min", "salary_max",
@@ -437,7 +441,12 @@ class Database:
                 size TEXT,
                 industry TEXT,
                 glassdoor_rating REAL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                careers_url TEXT,
+                linkedin_url TEXT,
+                ai_clues TEXT,
+                research_status TEXT,
+                researched_at TEXT
             );
             CREATE TABLE IF NOT EXISTS scraper_schedule (
                 source_name TEXT PRIMARY KEY,
@@ -610,6 +619,11 @@ class Database:
             "exclude_terms": "ALTER TABLE search_config ADD COLUMN exclude_terms TEXT NOT NULL DEFAULT '[]'",
             "allowed_regions": "ALTER TABLE search_config ADD COLUMN allowed_regions TEXT NOT NULL DEFAULT '[\"US\",\"Remote\"]'",
             "remote_only": "ALTER TABLE search_config ADD COLUMN remote_only INTEGER NOT NULL DEFAULT 0",
+            # M6: hybrid matcher weight config (JSON dict; validated + normalized on use)
+            "hybrid_weights": "ALTER TABLE search_config ADD COLUMN hybrid_weights TEXT",
+            # M6: candidate work preferences consumed by the hybrid matcher
+            "prefers_remote": "ALTER TABLE search_config ADD COLUMN prefers_remote INTEGER NOT NULL DEFAULT 1",
+            "requires_sponsorship": "ALTER TABLE search_config ADD COLUMN requires_sponsorship INTEGER NOT NULL DEFAULT 1",
         }
         for col, sql in migrations.items():
             if col not in columns:
@@ -645,11 +659,29 @@ class Database:
             if col not in jobs_columns:
                 await self.db.execute(sql)
 
+        # M7: companies migrations (rich research cache fields)
+        comp_cursor = await self.db.execute("PRAGMA table_info(companies)")
+        comp_columns = {row[1] for row in await comp_cursor.fetchall()}
+        comp_migrations = {
+            "careers_url": "ALTER TABLE companies ADD COLUMN careers_url TEXT",
+            "linkedin_url": "ALTER TABLE companies ADD COLUMN linkedin_url TEXT",
+            "ai_clues": "ALTER TABLE companies ADD COLUMN ai_clues TEXT",
+            "research_status": "ALTER TABLE companies ADD COLUMN research_status TEXT",
+            "researched_at": "ALTER TABLE companies ADD COLUMN researched_at TEXT",
+        }
+        if comp_columns:
+            for col, sql in comp_migrations.items():
+                if col not in comp_columns:
+                    await self.db.execute(sql)
+
         # job_scores migrations
         scores_cursor = await self.db.execute("PRAGMA table_info(job_scores)")
         scores_columns = {row[1] for row in await scores_cursor.fetchall()}
         scores_migrations = {
             "role_match": "ALTER TABLE job_scores ADD COLUMN role_match INTEGER NOT NULL DEFAULT 1",
+            # M6: hybrid engine breakdown + blockers (audit trail for every score)
+            "component_scores": "ALTER TABLE job_scores ADD COLUMN component_scores TEXT",
+            "hard_blockers": "ALTER TABLE job_scores ADD COLUMN hard_blockers TEXT",
         }
         for col, sql in scores_migrations.items():
             if col not in scores_columns:
@@ -715,6 +747,10 @@ class Database:
             "response_received_at": "ALTER TABLE applications ADD COLUMN response_received_at TEXT",
             "response_type": "ALTER TABLE applications ADD COLUMN response_type TEXT",
             "days_to_response": "ALTER TABLE applications ADD COLUMN days_to_response INTEGER",
+            # M8: package artifact tracking (dir + idempotency fingerprint + status)
+            "package_dir": "ALTER TABLE applications ADD COLUMN package_dir TEXT",
+            "package_fingerprint": "ALTER TABLE applications ADD COLUMN package_fingerprint TEXT",
+            "package_status": "ALTER TABLE applications ADD COLUMN package_status TEXT",
         }
         for col, sql in app_migrations.items():
             if col not in app_columns:
@@ -989,17 +1025,77 @@ class Database:
         if not row:
             return None
         d = dict(row)
-        for key in ("match_reasons", "concerns", "suggested_keywords"):
+        for key in ("match_reasons", "concerns", "suggested_keywords", "component_scores", "hard_blockers"):
             raw = d.get(key)
             if isinstance(raw, str) and raw.strip():
                 try:
                     d[key] = json.loads(raw)
                 except (json.JSONDecodeError, ValueError):
-                    d[key] = []
+                    d[key] = [] if key != "component_scores" else {}
             elif not isinstance(raw, (list, dict)):
-                d[key] = []
+                d[key] = [] if key != "component_scores" else {}
         d["role_match"] = bool(d.get("role_match", 1))
         return d
+
+    async def upsert_hybrid_score(self, job_id: int, score: int, reasons: list,
+                                  concerns: list, keywords: list, role_match: bool,
+                                  component_scores: dict, hard_blockers: list) -> None:
+        """M6: persist a hybrid score with its component breakdown + blockers."""
+        now = datetime.now(timezone.utc).isoformat()
+        await self.db.execute(
+            """INSERT OR REPLACE INTO job_scores
+               (job_id, match_score, match_reasons, concerns, suggested_keywords, scored_at, role_match,
+                component_scores, hard_blockers)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (job_id, score, json.dumps(reasons), json.dumps(concerns),
+             json.dumps(keywords), now, 1 if role_match else 0,
+             json.dumps(component_scores), json.dumps(hard_blockers))
+        )
+        await self.db.commit()
+
+    async def get_hybrid_weights(self) -> dict | None:
+        """M6: configured hybrid weights (None = defaults)."""
+        row = await (await self.db.execute(
+            "SELECT hybrid_weights FROM search_config LIMIT 1")).fetchone()
+        if not row or not row[0]:
+            return None
+        try:
+            return json.loads(row[0])
+        except (json.JSONDecodeError, ValueError):
+            return None
+
+    async def save_hybrid_weights(self, weights: dict) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        # Upsert: fresh DB may have no search_config row (M4 lesson).
+        await self.db.execute(
+            """INSERT INTO search_config (id, hybrid_weights, updated_at)
+               VALUES (1, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+               hybrid_weights = excluded.hybrid_weights,
+               updated_at = excluded.updated_at""",
+            (json.dumps(weights), now))
+        await self.db.commit()
+
+    async def get_hybrid_prefs(self) -> dict:
+        """M6: candidate work preferences for the hybrid matcher."""
+        row = await (await self.db.execute(
+            "SELECT prefers_remote, requires_sponsorship FROM search_config LIMIT 1")).fetchone()
+        return {
+            "prefers_remote": bool(row[0]) if row else True,
+            "requires_sponsorship": bool(row[1]) if row else True,
+        }
+
+    async def save_hybrid_prefs(self, prefers_remote: bool, requires_sponsorship: bool) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        await self.db.execute(
+            """INSERT INTO search_config (id, prefers_remote, requires_sponsorship, updated_at)
+               VALUES (1, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+               prefers_remote = excluded.prefers_remote,
+               requires_sponsorship = excluded.requires_sponsorship,
+               updated_at = excluded.updated_at""",
+            (1 if prefers_remote else 0, 1 if requires_sponsorship else 0, now))
+        await self.db.commit()
 
     async def get_analytics(self) -> dict:
         # Funnel conversion rates — single GROUP BY instead of per-status COUNT
@@ -1137,6 +1233,23 @@ class Database:
         cursor = await self.db.execute("SELECT * FROM applications WHERE job_id = ?", (job_id,))
         row = await cursor.fetchone()
         return dict(row) if row else None
+
+    async def get_package_meta(self, job_id: int) -> dict | None:
+        row = await (await self.db.execute(
+            "SELECT package_dir, package_fingerprint, package_status FROM applications "
+            "WHERE job_id = ?", (job_id,))).fetchone()
+        if not row or not row[0]:
+            return None
+        return {"job_id": job_id, "package_dir": row[0],
+                "package_fingerprint": row[1], "package_status": row[2]}
+
+    async def set_package_meta(self, app_id: int, package_dir: str,
+                               fingerprint: str, status: str) -> None:
+        await self.db.execute(
+            """UPDATE applications SET package_dir = ?, package_fingerprint = ?,
+               package_status = ? WHERE id = ?""",
+            (package_dir, fingerprint, status, app_id))
+        await self.db.commit()
 
     async def get_candidate_evidence(self) -> list[dict]:
         """All candidate evidence claims (M2), mirrored from the YAML store."""
@@ -1950,6 +2063,52 @@ class Database:
             "SELECT * FROM companies WHERE normalized_name = ?", (normalized,))
         row = await cursor.fetchone()
         return dict(row) if row else None
+
+    # -------------------------------------------------- M7: contact research
+
+    async def _ensure_contact_research_table(self) -> None:
+        await self.db.execute(
+            """CREATE TABLE IF NOT EXISTS contact_research (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER NOT NULL UNIQUE,
+                company TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'pending',
+                provider TEXT NOT NULL DEFAULT '',
+                candidates TEXT NOT NULL DEFAULT '[]',
+                researched_at TEXT NOT NULL
+            )""")
+        await self.db.commit()
+
+    async def get_contact_research(self, job_id: int) -> dict | None:
+        await self._ensure_contact_research_table()
+        cursor = await self.db.execute(
+            "SELECT * FROM contact_research WHERE job_id = ?", (job_id,))
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["candidates"] = json.loads(d.get("candidates") or "[]")
+        except (json.JSONDecodeError, ValueError):
+            d["candidates"] = []
+        return d
+
+    async def save_contact_research(self, job_id: int, company: str, status: str,
+                                    provider: str, candidates: list) -> None:
+        """Upsert one job's research snapshot (candidates = list of dicts)."""
+        await self._ensure_contact_research_table()
+        now = datetime.now(timezone.utc).isoformat()
+        await self.db.execute(
+            """INSERT INTO contact_research (job_id, company, status, provider, candidates, researched_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(job_id) DO UPDATE SET
+                 company = excluded.company,
+                 status = excluded.status,
+                 provider = excluded.provider,
+                 candidates = excluded.candidates,
+                 researched_at = excluded.researched_at""",
+            (job_id, company, status, provider, json.dumps(candidates), now))
+        await self.db.commit()
 
     async def save_company(self, name: str, **fields):
         _validate_columns("companies", fields.keys())
