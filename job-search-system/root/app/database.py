@@ -548,6 +548,22 @@ class Database:
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS outreach_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER NOT NULL,
+                audience TEXT NOT NULL,
+                channel TEXT NOT NULL DEFAULT 'email',
+                to_email TEXT NOT NULL DEFAULT '',
+                subject TEXT NOT NULL DEFAULT '',
+                body TEXT NOT NULL DEFAULT '',
+                provider TEXT NOT NULL DEFAULT 'local',
+                draft_id TEXT NOT NULL DEFAULT '',
+                thread_id TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'drafted',
+                created_at TEXT NOT NULL,
+                UNIQUE(job_id, audience),
+                FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+            );
             CREATE TABLE IF NOT EXISTS job_contacts (
                 job_id INTEGER NOT NULL,
                 contact_id INTEGER NOT NULL,
@@ -1233,6 +1249,56 @@ class Database:
         cursor = await self.db.execute("SELECT * FROM applications WHERE job_id = ?", (job_id,))
         row = await cursor.fetchone()
         return dict(row) if row else None
+
+    # -------------------------------------------------- M9: outreach messages
+
+    async def insert_outreach(self, job_id: int, audience: str, channel: str,
+                              to_email: str, subject: str, body: str,
+                              provider: str = "local", draft_id: str = "",
+                              thread_id: str = "", status: str = "drafted") -> int:
+        created = datetime.now(timezone.utc).isoformat()
+        cursor = await self.db.execute(
+            """INSERT INTO outreach_messages
+               (job_id, audience, channel, to_email, subject, body, provider,
+                draft_id, thread_id, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (job_id, audience, channel, to_email, subject, body, provider,
+             draft_id, thread_id, status, created))
+        await self.db.commit()
+        return cursor.lastrowid
+
+    async def get_outreach(self, job_id: int, audience: str) -> dict | None:
+        cursor = await self.db.execute(
+            "SELECT * FROM outreach_messages WHERE job_id = ? AND audience = ?",
+            (job_id, audience))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def get_outreach_by_id(self, message_id: int) -> dict | None:
+        cursor = await self.db.execute(
+            "SELECT * FROM outreach_messages WHERE id = ?", (message_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def list_outreach(self, limit: int = 100) -> list[dict]:
+        cursor = await self.db.execute(
+            """SELECT o.*, j.title, j.company FROM outreach_messages o
+               JOIN jobs j ON j.id = o.job_id
+               ORDER BY o.created_at DESC LIMIT ?""", (limit,))
+        return [dict(r) for r in await cursor.fetchall()]
+
+    async def count_outreach_since(self, since_iso: str, company: str = "") -> int:
+        if company:
+            cursor = await self.db.execute(
+                """SELECT COUNT(*) FROM outreach_messages o
+                   JOIN jobs j ON j.id = o.job_id
+                   WHERE o.created_at >= ? AND LOWER(j.company) = LOWER(?)""",
+                (since_iso, company))
+        else:
+            cursor = await self.db.execute(
+                "SELECT COUNT(*) FROM outreach_messages WHERE created_at >= ?",
+                (since_iso,))
+        return (await cursor.fetchone())[0]
 
     async def get_package_meta(self, job_id: int) -> dict | None:
         row = await (await self.db.execute(

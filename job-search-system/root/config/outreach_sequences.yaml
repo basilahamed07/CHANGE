@@ -1,0 +1,101 @@
+# M9: Outreach sequences — config-driven (Phase 21: config over code).
+#
+# Placeholders available in subject/body (deterministically rendered):
+#   {contact_name}   recipient name (or "there" when unknown)
+#   {job_title}      target job title
+#   {company}        target company
+#   {sender_name}    Basil's name (from identity below)
+#   {sender_email}   Basil's email (from identity below)
+#
+# HARD SAFETY RULES (enforced in code, not here):
+#   - Every message is born a DRAFT. Sending requires explicit per-message approval
+#     AND JOBAGENT_ALLOW_SEND=true. Nothing here can send.
+#   - One outreach message per (job, audience) — never twice (Critical Test #4).
+#   - Anti-spam caps: max_outreach_per_day and per_company_daily_cap.
+
+identity:
+  sender_name: "Basil Ahamed H"
+  sender_email: "basilahamed46@gmail.com"
+
+limits:
+  max_outreach_per_day: 12          # total drafts per day across all jobs
+  per_company_daily_cap: 2          # never flood one company
+  followup_wait_days: 6             # minimum days before a follow-up variant
+
+sequences:
+  recruiter:
+    channel: email
+    subject: "Application — {job_title} at {company}"
+    body: >-
+      Hi {contact_name},
+
+
+      I'm {sender_name}, an AI engineer focused on production LLM and RAG systems.
+      I'm applying for the {job_title} role at {company} and wanted to put my
+      application in front of you directly.
+
+
+      My recent work centers on building retrieval-augmented generation pipelines
+      and deploying LLM applications end-to-end. I believe this maps closely to
+      what your team is building.
+
+
+      My tailored resume is attached. If helpful, I'm happy to share a short
+      walkthrough of relevant projects.
+
+
+      Best regards,
+      {sender_name}
+      {sender_email}
+
+  hiring_manager:
+    channel: email
+    subject: "{job_title} at {company} — from an engineer who ships LLM systems"
+    body: >-
+      Hi {contact_name},
+
+
+      I'm applying for the {job_title} role on your team at {company}. Rather than
+      a generic note: I build production RAG and LLM-agent systems in Python, and
+      I read your team's work as a strong match for how I like to engineer.
+
+
+      If it's useful, I can walk you through a relevant project in 10 minutes.
+
+
+      Best regards,
+      {sender_name}
+      {sender_email}
+
+  referral:
+    channel: email
+    subject: "Quick one — {job_title} at {company}"
+    body: >-
+      Hi {contact_name},
+
+
+      I noticed the {job_title} opening at {company} and — since you know the
+      team and my background is in AI/LLM engineering — I wanted to ask whether
+      you'd be comfortable referring me, or pointing me to the right person.
+
+
+      No worries at all if not; a short pointer would already help a lot.
+
+
+      Thanks,
+      {sender_name}
+
+  followup:
+    channel: email
+    subject: "Re: Application — {job_title} at {company}"
+    body: >-
+      Hi {contact_name},
+
+
+      Following up on my application for the {job_title} role at {company}
+      submitted last week. I remain very interested and would welcome the
+      chance to discuss how my LLM/RAG experience fits the team's roadmap.
+
+
+      Best regards,
+      {sender_name}

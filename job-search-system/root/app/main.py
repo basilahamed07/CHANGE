@@ -485,6 +485,8 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
     app.include_router(research_router.router)
     from app.routers import packages as packages_router
     app.include_router(packages_router.router)
+    from app.routers import outreach as outreach_router
+    app.include_router(outreach_router.router)
 
     # --- Static files ---
     if not testing:

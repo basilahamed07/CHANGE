@@ -1182,6 +1182,66 @@ async def run_checks(app, client: httpx.AsyncClient, ai_job: int, ml_job: int,
     record("packages", "no package for untouched job -> 404",
            r.status_code == 404, str(r.status_code))
 
+    # ================= 16g. OUTREACH + GMAIL DRAFTS (M9) ==================
+    section("16g. OUTREACH + GMAIL DRAFTS (M9) — DRAFT-ONLY, Critical #4")
+    r = await call("GET", "/api/outreach/config", module="outreach")
+    cfg = r.json()
+    record("outreach", "config: audiences + caps + identity, gmail NOT connected",
+           r.status_code == 200 and "recruiter" in cfg.get("audiences", [])
+           and cfg.get("gmail_connected") is False
+           and (cfg.get("limits", {}).get("max_outreach_per_day", 0)) > 0,
+           f"audiences={cfg.get('audiences')}, caps={cfg.get('limits', {}).get('max_outreach_per_day')}/day")
+
+    out_job = ai_job
+    r = await client.post(f"/api/outreach/jobs/{out_job}/create", json={})
+    b = r.json() if r.status_code == 200 else {}
+    record("outreach", "create outreach -> draft generated (deterministic render)",
+           r.status_code == 200 and b.get("status") == "created"
+           and (b.get("message", {}).get("subject", "") != "")
+           and (b.get("message", {}).get("body", "") != ""),
+           f"status={b.get('status')}, provider={b.get('message', {}).get('provider')}")
+    first_id = (b.get("message") or {}).get("id")
+    record("outreach", "message born DRAFTED via local provider (gmail not connected)",
+           (b.get("message") or {}).get("provider") == "local"
+           and (b.get("message") or {}).get("status") == "drafted",
+           f"status={(b.get('message') or {}).get('status')}")
+    subj = (b.get("message") or {}).get("subject", "")
+    record("outreach", "rendered subject carries job + company (no unfilled placeholders)",
+           ai_job and "{" not in subj and ("AI Engineer" in subj or "Engineer" in subj),
+           f"subject={subj[:60]}")
+
+    # CRITICAL TEST #4 via live API
+    r = await client.post(f"/api/outreach/jobs/{out_job}/create", json={})
+    b2 = r.json() if r.status_code == 200 else {}
+    record("outreach", "CRITICAL #4: second create => already_exists, SAME message id",
+           r.status_code == 200 and b2.get("status") == "already_exists"
+           and (b2.get("message") or {}).get("id") == first_id,
+           f"status={b2.get('status')}, id={b2.get('message', {}).get('id')} vs {first_id}")
+    r = await client.get(f"/api/outreach/jobs/{out_job}")
+    n_for_job = r.json().get("count", 0)
+    record("outreach", "exactly ONE outreach row for the job (not two)",
+           n_for_job == 1, f"{n_for_job} rows")
+
+    # Different audience allowed on the same job
+    r = await client.post(f"/api/outreach/jobs/{out_job}/create",
+                          json={"audience": "hiring_manager"})
+    b3 = r.json() if r.status_code == 200 else {}
+    record("outreach", "second audience on same job OK (dedup is per audience)",
+           r.status_code == 200 and b3.get("status") == "created",
+           f"status={b3.get('status')}")
+
+    # Follow-up gating: must refuse before the wait window
+    r = await client.post(f"/api/outreach/jobs/{out_job}/followup")
+    b4 = r.json() if r.status_code in (200, 404) else {}
+    too_soon_or_404 = (r.status_code == 200 and b4.get("status") == "too_soon") or r.status_code == 404
+    record("outreach", "follow-up refused before wait window (too_soon / no initial)",
+           too_soon_or_404, f"http={r.status_code}, status={b4.get('status')}")
+
+    # Unknown audience -> 422
+    r = await client.post(f"/api/outreach/jobs/{out_job}/create",
+                          json={"audience": "spam_blast"})
+    record("outreach", "unknown audience rejected (422)", r.status_code == 422, str(r.status_code))
+
     # ================= 17. FLAGGED-OFF MODULES (D22) ======================
     section("17. US-ONLY MODULES (must be OFF)")
     r = await client.post(f"/api/jobs/{ai_job}/estimate-salary")

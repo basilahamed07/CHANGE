@@ -1,11 +1,11 @@
 # E2E MODULE TEST REPORT — jobagent website, every module
 
-**Date:** 2026-09-22 20:26 UTC  
+**Date:** 2026-09-22 21:04 UTC  
 **Method:** isolated instance of the real app (fresh DB, real free AI model `poolside/laguna-s-2.1:free`, evidence profile seeded from Basil's actual resume). Every module exercised through its public HTTP API with real flows — real .docx upload, real AI scoring/tailoring/cover-letter/interview-prep, real evidence-gate enforcement.
 
 **AI live-run:** NO — free-tier quota exhausted or unreachable; AI checks recorded as SKIP  
 
-## RESULT: **137/137 checks passed** (127 PASS · 10 SKIP · 0 FAIL)
+## RESULT: **147/147 checks passed** (137 PASS · 10 SKIP · 0 FAIL)
 
 ## All checks by module
 
@@ -31,7 +31,7 @@
 ### evidence — 5/5
 - ✅ /api/evidence
 - ✅ claims loaded — {'VERIFIED': 4, 'UNVERIFIED': 1, 'DISPUTED': 0, 'DO_NOT_USE': 1}
-- ✅ verified-backed text PASSES gate — {"ok":true,"failures":[],"warnings":[],"checked_at":"2026-09-22T20:25:23.155438+00:00"}
+- ✅ verified-backed text PASSES gate — {"ok":true,"failures":[],"warnings":[],"checked_at":"2026-09-22T21:02:37.159627+00:00"}
 - ✅ fabricated text BLOCKED by gate — ['fabricated_number', 'unsupported_skill']
 - ✅ reload
 
@@ -195,6 +195,18 @@
 - ✅ unknown file rejected (400) — 400
 - ✅ list packages includes the built job — 1 packages
 - ✅ no package for untouched job -> 404 — 404
+
+### outreach — 10/10
+- ✅ /api/outreach/config
+- ✅ config: audiences + caps + identity, gmail NOT connected — audiences=['recruiter', 'hiring_manager', 'referral', 'followup'], caps=12/day
+- ✅ create outreach -> draft generated (deterministic render) — status=created, provider=local
+- ✅ message born DRAFTED via local provider (gmail not connected) — status=drafted
+- ✅ rendered subject carries job + company (no unfilled placeholders) — subject=Application — Senior AI Engineer at Acme AI
+- ✅ CRITICAL #4: second create => already_exists, SAME message id — status=already_exists, id=1 vs 1
+- ✅ exactly ONE outreach row for the job (not two) — 1 rows
+- ✅ second audience on same job OK (dedup is per audience) — status=created
+- ✅ follow-up refused before wait window (too_soon / no initial) — http=200, status=too_soon
+- ✅ unknown audience rejected (422) — 422
 
 ### flags — 2/2
 - ✅ salary estimate disabled (404) — 404

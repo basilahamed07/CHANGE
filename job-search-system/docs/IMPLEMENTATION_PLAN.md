@@ -129,10 +129,19 @@ Rules for every milestone:
   **788 total green**; E2E 16f 8/8, full harness **137/137, 0 FAIL**;
   report docs/M8_E2E_TEST_REPORT.md.
 
-## M9 — Outreach + Gmail drafts
+## M9 — Outreach + Gmail drafts — **DONE 2026-09-23 (E2E-verified, Rule #5)**
 - Outreach engine (recruiter / hiring manager / referral variants; channels LinkedIn note/DM, email, follow-up); sequences in config (Phase 21) with anti-spam caps and dedup across duplicate jobs.
 - GmailProvider interface: create_draft / update_draft / find_thread / find_replies; OAuth flow ported; DRAFT-ONLY default; explicit `JOBAGENT_ALLOW_SEND` + per-draft approval to ever send; thread-level draft dedup; ids persisted in `email_threads`.
 - Tests: **CRITICAL #4** — running outreach twice ⇒ exactly one Gmail draft. Sequence config parsing; audience-differentiation assertions.
+- Delivered: `config/outreach_sequences.yaml` (4 audience sequences + identity + caps),
+  `app/outreach.py` (OutreachService idempotent per (job,audience) — **CRITICAL #4 at 3
+  layers**: service dedup-first, DB UNIQUE backstop, Gmail thread lookup; deterministic
+  audience pick from contact-on-file; **GmailProvider DRAFT-ONLY via REST httpx — no send
+  method exists**; local-draft fallback without token), `app/routers/outreach.py`
+  (create/followup/list/config), `outreach_messages` table (UNIQUE(job_id,audience)).
+  OAuth UI flow deferred to M10+; caps 12/day · 2/company/day · 6d follow-up gate.
+  Verification: 17 unit tests → **805 total green**; E2E 16g 10/10 incl. Critical #4
+  via live API, full harness **147/147, 0 FAIL**; report docs/M9_E2E_TEST_REPORT.md.
 
 ## M10 — CRM + follow-ups
 - Status enum (Phase 23), append-only ApplicationEvent history; bulk transitions.

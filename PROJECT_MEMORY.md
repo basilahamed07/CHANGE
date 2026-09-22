@@ -39,13 +39,13 @@
 
 ## 3. CURRENT STATE
 
-- **Phases completed:** 0–4, 5–11 (M3+M4+M5), 12–13 (M6), 15–17 (M7), 18–19 (M8), 42, 43 (analysis-only gate satisfied)
-- **Current phase:** M8 COMPLETE ✅ → next up **M9 (outreach engine + Gmail drafts — Critical Test #4)**
+- **Phases completed:** 0–4, 5–11 (M3+M4+M5), 12–13 (M6), 15–17 (M7), 18–19 (M8), 20–22 (M9), 42, 43 (analysis-only gate satisfied)
+- **Current phase:** M9 COMPLETE ✅ → next up **M10 (CRM + follow-up engine + approval matrix)**
 - **Approved to implement:** YES — Basil approved M1 start after architecture review
 - **Workspace:** `job-search-system/` with root/ (final product), references/ (5 clones), docs/, analysis/
 - **Analysis artifacts DONE:** docs/REPOSITORY_ANALYSIS.md, docs/FEATURE_MATRIX.md,
   docs/ARCHITECTURE_DECISION.md, docs/IMPLEMENTATION_PLAN.md
-- **Next action:** Begin milestone M9 (Outreach engine: recruiter/hiring-manager/referral variants, config-driven sequences, GmailProvider DRAFT-ONLY with OAuth + thread-level dedup — Critical Test #4: outreach twice ⇒ exactly one draft).
+- **Next action:** Begin milestone M10 (Application CRM status enum + append-only events, follow-up engine with country-cadence + terminal-state stop rules, queue approval flow extended to packages/outreach).
 - **Note:** Project root is `~/Documents/PERSONAL PROJECT/job_get` which pre-contains
   CENTER-AGNET/, job_get/, testing/ — untouched, unrelated to this build.
 - **Analysis-only gate:** SATISFIED — all 4 analysis docs exist. NO major implementation
@@ -75,9 +75,9 @@
 | 17 | Contact confidence | DONE 2026-09-23 (M7 — deterministic scoring) |
 | 18 | Resume tailoring (DOCX primary) | DONE 2026-09-23 (M8 — package builder, DOCX-first) |
 | 19 | Application package layout | DONE 2026-09-23 (M8 — Phase-19 layout + metadata.json) |
-| 20 | Outreach engine | PENDING |
-| 21 | Outreach sequences (config-driven) | PENDING |
-| 22 | Gmail draft integration | PENDING |
+| 20 | Outreach engine | DONE 2026-09-23 (M9 — audience variants + caps) |
+| 21 | Outreach sequences (config-driven) | DONE 2026-09-23 (M9 — YAML sequences) |
+| 22 | Gmail draft integration | DONE 2026-09-23 (M9 — DRAFT-ONLY, local fallback) |
 | 23 | Application CRM + events | PENDING |
 | 24 | Kanban dashboard | PENDING |
 | 25 | Daily automation scheduler | PENDING |
@@ -281,7 +281,32 @@
     idempotency, refusal leaves no files, OOXML magic bytes, metadata audit trail);
     **788 passed** full suite (+12). E2E: 16f — 8/8, full harness **137/137, 0 FAIL**.
     Report: docs/M8_E2E_TEST_REPORT.md.
-- M9 Outreach + Gmail drafts — PENDING
+- M9 Outreach + Gmail drafts — **DONE 2026-09-23** (E2E-verified, Rule #11). Details:
+  - `config/outreach_sequences.yaml` — 4 audience sequences (recruiter/hiring_manager/
+    referral/followup) + identity + anti-spam limits (12/day, 2/company/day,
+    6d follow-up wait). Phase-21 config-over-code.
+  - `app/outreach.py` — OutreachService: create_outreach IDEMPOTENT per (job, audience)
+    — **CRITICAL TEST #4 passes at 3 layers**: service dedup-first, DB UNIQUE(job_id,
+    audience) backstop, Gmail thread-level find_existing_draft before create.
+    Deterministic _pick_audience from contact-on-file (classify_role reuse);
+    render_message with placeholder fill + blank-line collapse. **GmailProvider is
+    DRAFT-ONLY (create_draft/find_existing_draft — no send method exists)** via
+    httpx REST (zero new deps); local-draft fallback (provider='local') when no
+    JOBAGENT_GMAIL_TOKEN so the pipeline completes without Gmail. Caps: daily,
+    per-company; followup gated by wait window.
+  - `app/routers/outreach.py` — POST jobs/{id}/create (already_exists on repeat),
+    POST jobs/{id}/followup (too_soon gate), GET jobs/{id}, GET messages, GET config
+    (gmail_connected honest false).
+  - DB: outreach_messages (UNIQUE(job_id,audience), FK jobs, provider/draft_id/
+    thread_id/status).
+  - **Near-miss caught:** inserting outreach_messages CREATE inside
+    contact_interactions statement — broken SQL caught by reading back the edit
+    immediately; repaired with FK improvement.
+  - Tests: tests/test_outreach.py 17 (Critical #4 x3 layers, no-send-method
+    assertion, local fallback, gmail draft mock, thread dedup never-create,
+    caps matrix, followup time-travel, API double-create); **805 passed** full
+    suite (+17). E2E: 16g — 10/10 incl. Critical #4 via live API; full harness
+    **147/147, 0 FAIL**. Report: docs/M9_E2E_TEST_REPORT.md.
 - M10 CRM + follow-ups — PENDING
 - M11 Scheduler — PENDING
 - M12 Analytics + feedback — PENDING
@@ -336,6 +361,7 @@
 | 2026-09-22 | Session 14: **M5 Dedup + freshness + eligibility COMPLETE (E2E-verified, Rule #11).** `app/freshness.py` — 3 states (VERIFIED_FRESH / STALE / DATE_UNKNOWN) with evidence dict stored on jobs.freshness_evidence (audit trail); DATE_UNKNOWN is terminal — never upgraded (Critical Test #3). `app/eligibility.py` — deterministic gate chain (dismissed → freshness → evidence → repost-pending) with reason codes, zero LLM on INELIGIBLE. API: POST /jobs/{id}/eligibility, GET /eligibility/eligible-jobs, GET /jobs/{id}/freshness. `job_duplicates` repost graph + merge path in discovery cross-source dedup. **Real bug fixed:** auto_dismiss_stale used 30d, violating Golden Rule 10 (MAX_JOB_AGE_DAYS=7) — freshness-driven now. E2E 98/98 / 0 FAIL (eligibility 8/8 incl. CRITICAL #3 via API); 723 unit tests green (+14). Router lesson: `_engine()()` double-call left a coroutine un-awaited — dependency injection must return the instance, not a factory. Server-ops: pkill+restart verified via `ss -tlnp` single-listener + /api/system/health + live-pool eligibility query (3 eligible jobs found on Basil's 778-job pool). |
 | 2026-09-22 | Session 13: **M4 Discovery adapters + normalization COMPLETE (E2E-verified).** JobSourceAdapter interface + CanonicalJob + make_content_hash (cross-source identity, URL excluded). 4 ATS adapters (greenhouse facade, lever, ashby, smartrecruiters) on BaseScraper chassis — all 4 probed LIVE against real APIs (lever defaults pruned to verified-live boards spotify/palantir). run_discovery_cycle: countries × terms × adapters with legacy ingest gates + budget cap + per-pass stop-reason telemetry; orchestrator enforces source attribution. **Critical Test #2 deterministic:** same job 2 sources → 1 job + 2 source rows. **Real bug fixed:** update_allowed_regions bare UPDATE silently no-op'd on fresh DBs → UPSERT. E2E 90/90 (discovery 8/8 with local ATS stubs + live probes); 709 unit tests green. AI-quota SKIPs (10) environmental: scoring ran 20/592 then circuit breaker stopped gracefully. respx added as dev dep. |
 | 2026-09-22 | Session 11: **E2E suite completed with REAL AI — 68/68 PASS, 0 SKIP, 0 FAIL** (report: docs/E2E_MODULE_TEST_REPORT.md @ 07:09 UTC). Quota had reset, so scoring/tailoring/cover-letter/interview-prep all ran against poolside/laguna-s-2.1:free — noise job (Graphic Designer) scored 0, AI job scored high, evidence-gated tailoring passed. **Harness hardening (analysis/e2e_module_test.py):** (1) SSE pub/sub check now runs against a REAL embedded uvicorn socket — ASGITransport buffers whole responses so an SSE event can NEVER arrive in-process; must pass `lifespan="off"` or the embedded server re-runs lifespan and closes state.db mid-suite (crashed a run with 'no active connection' + SchedulerNotRunningError); stuck probe is abandoned WITHOUT join (endpoint swallows CancelledError). (2) Seed now walks the REAL `run_location_classification` step — scoring is gated on `location_classified=1`, synthetic jobs otherwise invisible to scoring. (3) Job score is nested: `job.score.match_score`, not top-level. (4) Dismiss test moved AFTER scoring (dismissed jobs excluded from scoring by design). (5) Crash guard: any uncaught section error is recorded and the report still writes. **Live validation of earlier fixes:** free quota died mid-run during cover-letter generation → endpoint returned the honest 502 exactly as designed (fix #2 from Session 10 verified in production conditions). **No new product bugs found.** Unit suites green: 43 passed (test_api + test_evidence). Same day: **Basil added Golden Rule #11** — every new module/feature requires E2E verification + report in docs/ + fixes + memory/plan updates before it can be called done. Codified in IMPLEMENTATION_PLAN.md milestone rules (#5) and Golden Rules (#11). |
+| 2026-09-23 | Session 20: **M9 Outreach + Gmail drafts COMPLETE (E2E-verified, Rule #11). CRITICAL TEST #4 PASSES at three layers** (service dedup-first → DB UNIQUE backstop → Gmail thread lookup): outreach twice ⇒ exactly one draft. DRAFT-ONLY by construction (no send method exists; local-draft fallback without token; honest gmail_connected=false). Config-driven sequences (4 audiences) + caps (12/day, 2/company, 6d followup gate). Near-miss fixed: outreach CREATE inserted inside contact_interactions SQL — caught by immediate read-back. 17 unit tests → 805 green; E2E 16g 10/10, full harness **147/147, 0 FAIL**; report docs/M9_E2E_TEST_REPORT.md. Committed+pushed M6–M8 (73fbd00) with NEW_PC_SETUP.md; data/profile/ evidence templates now versioned (fresh-clone fail-closed gap closed). Live server runs on 127.0.0.1:8085 for Basil; hybrid score-all covered 572/572 jobs free (avg 44.7, 17 sponsorship-blockers caught incl. all Cloudflare + NSA). |
 | 2026-09-23 | Session 19: **M8 Application package generation COMPLETE (E2E-verified, Rule #11).** ApplicationBuilder with Phase-19 layout (DOCX-first resume + cover letter + .txt + metadata.json audit), fingerprint-based idempotency (same inputs ⇒ noop, byte-identical), EvidenceViolationError as the last-line gate (unverified claims never materialize), packages born ready_for_review. /api/packages build/refresh/list/download (5-file allowlist). refresh=true works with ZERO AI on stored text — verified live in a quota-dead run. 12 unit tests → 788 green; E2E 16f 8/8, full harness **137/137, 0 FAIL**; report docs/M8_E2E_TEST_REPORT.md. |
 | 2026-09-23 | Session 18: **M7 Company + contact research COMPLETE (E2E-verified, Rule #11).** ContactProvider interface + 4 adapters (Manual first, Hunter, Apollo, WebSearch) with never-raise contract + rate limiting; deterministic role taxonomy + confidence scoring; cache-first research service (7d TTL) with select_candidate + contact email-dedup; company enrichment (careers/LinkedIn/AI-clues, 30d cache) via regex — zero LLM. /api/research surface + contact_research table + companies rich columns. 2 bugs found+fixed (harness await-.json(); companies column allowlist). 29 unit tests → 776 green; E2E 16e 13/13, full harness **129/129, 0 FAIL**; report docs/M7_E2E_TEST_REPORT.md. System fully functional with NO paid contact-provider keys (manual+web fallback). |
 | 2026-09-23 | Session 17: **M6 Hybrid matching COMPLETE (E2E-verified, Rule #11).** Deterministic 6-component engine (skills/role/location/visa/recency/semantic) + pure-Python TF-IDF + RagProvider over VERIFIED evidence; hard-blocker short-circuit; free baseline scoring of the whole pool (zero AI quota) wired into the scheduler as the layer under AI scoring; /api/matching surface (status/score/score-all/explain/config/top-jobs); component_scores + hard_blockers persisted per score. 4 bugs found+fixed (idf ordering, space-collapsing boundary matcher, normalized-skill phrase-match kill, Country.visa attr). 24 unit tests → 747 green; E2E 16d 17/17, full harness **116/116, 0 FAIL**; report docs/M6_E2E_TEST_REPORT.md. Also Session 16 same day: Basil-requested M1–M5 re-verification with real resume (98/98; harness resume-selection pinned to default resume; detached `uv run` dies silently — launch E2E via .venv/bin/python). |
