@@ -98,6 +98,16 @@ async function renderStats(container) {
             </div>
             <div class="card" style="padding:24px;margin-top:24px">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <h2 style="font-size:1.125rem;font-weight:600;margin:0">AI Usage &amp; Cost</h2>
+                    <a href="#/settings" style="font-size:0.8125rem;color:var(--accent)">Provider settings</a>
+                </div>
+                <p style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:12px">Token metering and estimated spend per model, plus today's pipeline activity.</p>
+                <div id="monitoring-container">
+                    <div class="loading-container"><span class="spinner"></span></div>
+                </div>
+            </div>
+            <div class="card" style="padding:24px;margin-top:24px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
                     <h2 style="font-size:1.125rem;font-weight:600;margin:0">Career Advisor</h2>
                     <button class="btn btn-primary btn-sm" id="career-analyze-btn">Analyze Career</button>
                 </div>
@@ -493,11 +503,79 @@ async function renderStats(container) {
             document.getElementById('response-analytics-container').innerHTML = '<div class="empty-state empty-state-compact"><div class="empty-state-title">Could not load response data</div><div class="empty-state-desc">Try refreshing the page.</div></div>';
         }
 
-        // Career Advisor
+        // AI Usage & Cost (M14 observability)
         try {
+            const mon = await api.request('GET', '/api/analytics/monitoring');
+            const t = (mon.ai_usage || {}).totals || (mon.ai_usage || {}).all_time?.totals || {};
+            const today = ((mon.ai_usage || {}).today || {}).totals || {};
+            const budget = mon.budget || {};
+            const cache = mon.cache || {};
+            const run = mon.daily_run || {};
+            const fmtUsd = (v) => '$' + (Number(v || 0)).toFixed(4);
+            const byModel = Object.entries(((mon.ai_usage || {}).all_time || {}).by_model || {});
+            const monContainer = document.getElementById('monitoring-container');
+            monContainer.innerHTML = `
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:12px">
+                    <div style="padding:12px;background:var(--bg-surface-secondary);border-radius:var(--radius-sm)">
+                        <div style="font-size:0.75rem;color:var(--text-tertiary)">Spent (30d)</div>
+                        <div style="font-size:1.125rem;font-weight:600">${fmtUsd(t.cost_usd)}</div>
+                    </div>
+                    <div style="padding:12px;background:var(--bg-surface-secondary);border-radius:var(--radius-sm)">
+                        <div style="font-size:0.75rem;color:var(--text-tertiary)">AI calls</div>
+                        <div style="font-size:1.125rem;font-weight:600">${t.calls || 0}</div>
+                    </div>
+                    <div style="padding:12px;background:var(--bg-surface-secondary);border-radius:var(--radius-sm)">
+                        <div style="font-size:0.75rem;color:var(--text-tertiary)">Tokens in / out</div>
+                        <div style="font-size:1.125rem;font-weight:600">${(t.tokens_in || 0).toLocaleString()} / ${(t.tokens_out || 0).toLocaleString()}</div>
+                    </div>
+                    <div style="padding:12px;background:var(--bg-surface-secondary);border-radius:var(--radius-sm)">
+                        <div style="font-size:0.75rem;color:var(--text-tertiary)">Avg / call</div>
+                        <div style="font-size:1.125rem;font-weight:600">${fmtUsd((mon.ai_usage || {}).all_time?.avg_cost_per_call_usd || 0)}</div>
+                    </div>
+                </div>
+                <div style="font-size:0.8125rem;color:var(--text-secondary);margin-bottom:10px">
+                    Budget $${(budget.budget_usd || 0).toFixed(2)} · used ${budget.percent_used || 0}% · remaining $${(budget.remaining_usd || 0).toFixed(4)}
+                    ${budget.calls_remaining_estimate != null ? `· <strong>~${budget.calls_remaining_estimate.toLocaleString()} calls left</strong>` : ''}
+                    · today: ${today.calls || 0} calls / ${fmtUsd(today.cost_usd)}
+                </div>
+                <div style="font-size:0.8125rem;color:var(--text-secondary);margin-bottom:10px">
+                    Research cache hit rate: ${cache.hit_rate != null ? Math.round(cache.hit_rate * 100) + '%' : 'n/a'}
+                    (${cache.research_cache_hits || 0} hits / ${cache.research_cache_misses || 0} misses)
+                    · packages today: ${run.packages_created || 0}
+                </div>
+                ${byModel.length ? `
+                    <table style="width:100%;font-size:0.8125rem;border-collapse:collapse">
+                        <thead><tr style="color:var(--text-tertiary);text-align:left">
+                            <th style="padding:4px 0">Model</th><th>Calls</th><th>Tokens</th><th style="text-align:right">Cost</th>
+                        </tr></thead>
+                        <tbody>
+                            ${byModel.map(([m, d]) => `<tr>
+                                <td style="padding:4px 0">${escapeHtml(m)}</td>
+                                <td>${d.calls}</td>
+                                <td>${(d.tokens_in + d.tokens_out).toLocaleString()}</td>
+                                <td style="text-align:right">${fmtUsd(d.cost_usd)}</td>
+                            </tr>`).join('')}
+                        </tbody>
+                    </table>
+                ` : '<div style="font-size:0.875rem;color:var(--text-tertiary)">No AI calls metered yet. Usage appears here after scoring, tailoring or cover-letter generation.</div>'}
+            `;
+        } catch {
+            document.getElementById('monitoring-container').innerHTML = '<div class="empty-state empty-state-compact"><div class="empty-state-title">Could not load usage data</div><div class="empty-state-desc">Try refreshing the page.</div></div>';
+        }
+
+        // Career Advisor (endpoint 404s when the feature flag is off — check first)
+        let careerEnabled = false;
+        try {
+            const health = await api.request('GET', '/api/system/health');
+            careerEnabled = !!(health.features && health.features.career_advisor);
+        } catch { /* default to disabled */ }
+        try {
+            const careerContainer = document.getElementById('career-advisor-container');
+            if (!careerEnabled) {
+                careerContainer.innerHTML = '<div style="font-size:0.875rem;color:var(--text-tertiary)">Career advisor is disabled. Enable it with <code>JOBAGENT_ENABLE_CAREER_ADVISOR=true</code>.</div>';
+            } else {
             const careerData = await api.request('GET', '/api/career/suggestions');
             const suggestions = careerData.suggestions || [];
-            const careerContainer = document.getElementById('career-advisor-container');
             if (suggestions.length === 0) {
                 careerContainer.innerHTML = '<div style="font-size:0.875rem;color:var(--text-tertiary)">No suggestions yet. Click "Analyze Career" to get AI-powered recommendations.</div>';
             } else {
@@ -526,6 +604,7 @@ async function renderStats(container) {
                         } catch (err) { showToast(err.message, 'error'); }
                     });
                 });
+            }
             }
         } catch {
             document.getElementById('career-advisor-container').innerHTML = '<div class="empty-state empty-state-compact"><div class="empty-state-title">Could not load career advice</div><div class="empty-state-desc">Try refreshing the page.</div></div>';

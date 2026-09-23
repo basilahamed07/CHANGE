@@ -52,8 +52,11 @@ const api = {
     },
 
     updateApplication(id, status, notes = '') {
-        const qs = new URLSearchParams({ status, notes });
-        return this.request('POST', `/api/jobs/${id}/application?${qs}`);
+        // M10: status changes go through the VALIDATED transition engine so the
+        // UI cannot create impossible pipeline states (e.g. rejected -> offered)
+        // and terminal states auto-stop follow-ups. Illegal moves return 422.
+        const qs = new URLSearchParams({ to_status: status, notes });
+        return this.request('POST', `/api/jobs/${id}/status?${qs}`);
     },
 
     async triggerScrape() {

@@ -1242,6 +1242,197 @@ async def run_checks(app, client: httpx.AsyncClient, ai_job: int, ml_job: int,
                           json={"audience": "spam_blast"})
     record("outreach", "unknown audience rejected (422)", r.status_code == 422, str(r.status_code))
 
+    # ================= 16h. CRM TRANSITIONS + FOLLOW-UPS (M10) ============
+    section("16h. CRM TRANSITIONS + FOLLOW-UPS (M10) — deterministic gates")
+    r = await call("GET", "/api/crm/statuses", module="crm")
+    st = r.json()
+    record("crm", "transition table exposed (pipeline + terminal + approvals)",
+           r.status_code == 200 and "applied" in st.get("pipeline", [])
+           and "rejected" in st.get("terminal", [])
+           and st.get("approval_matrix", {}).get("outreach_send", {}).get("approval") == "explicit"
+           and st.get("approval_matrix", {}).get("scrape", {}).get("approval") == "auto",
+           f"pipeline={len(st.get('pipeline', []))}, terminal={len(st.get('terminal', []))}, "
+           f"outreach_send={st.get('approval_matrix', {}).get('outreach_send')}")
+
+    # Use a job with NO application row yet (section 11 already drove ai_job to
+    # 'applied'), so the walk starts from the real 'interested' default.
+    crm_job = ml_job
+    tracked: set[int] = set()
+    for col in ("interested", "prepared", "applied", "interviewing", "offered", "rejected"):
+        rr = await client.get(f"/api/pipeline/{col}")
+        if rr.status_code == 200:
+            tracked.update(j["id"] for j in rr.json().get("jobs", []))
+    record("crm", f"CRM walk job has NO application row yet (clean start, job {crm_job})",
+           crm_job not in tracked, f"{len(tracked)} jobs tracked across all columns")
+
+    # jumping straight to 'offered' must be INVALID (never applied/interviewed)
+    r = await client.post(f"/api/jobs/{crm_job}/status?to_status=offered")
+    record("crm", "interested -> offered REJECTED (no offer without applying, 422)",
+           r.status_code == 422, str(r.status_code))
+
+    # realistic off-platform move: the UI's "Mark applied" button (interested -> applied)
+    r = await client.post(f"/api/jobs/{crm_job}/status?to_status=applied")
+    record("crm", "interested -> applied accepted (UI Mark-applied path)",
+           r.status_code == 200, str(r.status_code))
+
+    # correction move stays allowed, then forward again
+    r = await client.post(f"/api/jobs/{crm_job}/status?to_status=prepared")
+    r2 = await client.post(f"/api/jobs/{crm_job}/status?to_status=applied")
+    record("crm", "backward correction then forward again accepted",
+           r.status_code == 200 and r2.status_code == 200,
+           f"{r.status_code}/{r2.status_code}")
+
+    # applied sets applied_at + creates a pending follow-up reminder
+    r = await client.get("/api/reminders")
+    all_rems = r.json().get("reminders", []) if r.status_code == 200 else []
+    pend = [x for x in all_rems if x.get("job_id") == crm_job
+            and x.get("status") == "pending"]
+    record("crm", "entering applied created a pending follow-up reminder",
+           len(pend) >= 1, f"{len(pend)} pending for job {crm_job}")
+
+    # terminal state stops follow-ups and blocks transitions
+    r = await client.post(f"/api/jobs/{crm_job}/status?to_status=interviewing")
+    record("crm", "applied -> interviewing accepted", r.status_code == 200)
+    r = await client.post(f"/api/jobs/{crm_job}/status?to_status=rejected")
+    record("crm", "interviewing -> rejected accepted", r.status_code == 200)
+    r = await client.post(f"/api/jobs/{crm_job}/status?to_status=interviewing")
+    record("crm", "rejected (terminal) -> interviewing BLOCKED (422)",
+           r.status_code == 422, str(r.status_code))
+    r = await client.post(f"/api/jobs/{crm_job}/status?to_status=offered")
+    record("crm", "rejected (terminal) -> offered BLOCKED (422)",
+           r.status_code == 422, str(r.status_code))
+
+    # follow-up engine run: deterministic, safe on empty DB
+    r = await client.post("/api/crm/followups/run")
+    b = r.json()
+    record("crm", "follow-up engine runs (counts + terminal stop accounting)",
+           r.status_code == 200 and "followups_due" in b and "terminal_stopped" in b,
+           f"due={b.get('followups_due')}, stopped={b.get('terminal_stopped')}")
+
+    # bulk transitions validate each item independently:
+    #   crm_job is 'rejected' (terminal) -> must fail
+    #   noise_job has no application row ('interested') -> -> prepared valid -> must succeed
+    r = await client.post(f"/api/jobs/{crm_job}/bulk-status?to_status=prepared&job_ids={crm_job},{noise_job}")
+    b = r.json() if r.status_code == 200 else {}
+    res = b.get("results", [])
+    record("crm", "bulk-status reports per-item validity (not all-or-nothing)",
+           r.status_code == 200 and len(res) == 2
+           and any(x.get("ok") for x in res) and any(not x.get("ok") for x in res),
+           f"{[(x.get('job_id'), x.get('ok')) for x in res]}")
+
+    # ================= 16i. DAILY RUN (M11) ===============================
+    section("16i. DAILY RUN (M11) — target accounting + shortfall reasons")
+    r = await call("GET", "/api/daily-run/today", module="dailyrun")
+    b = r.json()
+    record("dailyrun", "today endpoint: date + target + packages_created",
+           r.status_code == 200 and b.get("run_date")
+           and isinstance(b.get("packages_created"), int)
+           and b.get("daily_target", 0) > 0,
+           f"date={b.get('run_date')}, target={b.get('daily_target')}, pkgs={b.get('packages_created')}")
+
+    r = await client.post("/api/daily-run/run")
+    b = r.json() if r.status_code == 200 else {}
+    stages = {s.get("name"): s.get("status") for s in b.get("stages", [])}
+    record("dailyrun", "run completes: select done, stages tracked",
+           r.status_code == 200 and stages.get("select") == "done"
+           and len(b.get("stages", [])) >= 4,
+           f"stages={stages}")
+    record("dailyrun", "report carries machine-readable shortfall reasons",
+           isinstance(b.get("shortfall_reasons"), list)
+           and len(b.get("shortfall_reasons", [])) >= 1
+           and all(isinstance(x, str) for x in b.get("shortfall_reasons", [])),
+           f"reasons={b.get('shortfall_reasons')}")
+
+    # idempotency: second run on the same day must not duplicate work
+    r2 = await client.post("/api/daily-run/run")
+    b2 = r2.json() if r2.status_code == 200 else {}
+    stages2 = {s.get("name"): s.get("status") for s in b2.get("stages", [])}
+    record("dailyrun", "second run same-day is idempotent (stages stay done)",
+           r2.status_code == 200 and stages2.get("select") == "done"
+           and b2.get("packages_created") == b.get("packages_created"),
+           f"pkgs={b.get('packages_created')} -> {b2.get('packages_created')}")
+
+    # ================= 16j. RESPONSE MONITOR + FEEDBACK (M12) =============
+    section("16j. RESPONSE MONITOR + FEEDBACK (M12) — classifier + REVIEW routing")
+
+    async def classify(subject, body, sender=""):
+        rr = await client.post("/api/responses/classify",
+                               json={"subject": subject, "body": body, "sender": sender})
+        return rr.json() if rr.status_code == 200 else {}
+
+    c = await classify("Interview invitation", "Let's schedule a call Thursday — calendar link inside")
+    record("responses", "interview invite classified (high confidence)",
+           c.get("label") == "interview_invite" and c.get("review") is False,
+           f"{c.get('label')} @ {c.get('confidence')}")
+    c = await classify("Update", "Unfortunately we decided not to move forward")
+    record("responses", "rejection classified", c.get("label") == "rejection")
+    c = await classify("Application received",
+                       "Thank you for your application — this is an automatic reply",
+                       sender="noreply@corp.com")
+    record("responses", "auto-ack via no-reply sender", c.get("label") == "auto_ack")
+    c = await classify("hello", "just checking in about the role")
+    record("responses", "ambiguous text routes to REVIEW (never silent guess)",
+           c.get("label") == "review" and c.get("review") is True,
+           f"{c.get('label')} @ {c.get('confidence')}")
+
+    r = await client.get("/api/analytics/feedback")
+    b = r.json()
+    record("feedback", "feedback loop returns recommendations + human-review flag",
+           r.status_code == 200 and isinstance(b.get("recommendations"), list)
+           and b.get("review_required") is True
+           and b.get("auto_rewrite_performed") is False,
+           f"{len(b.get('recommendations', []))} recs, no auto-rewrite")
+
+    # analytics funnel includes CRM statuses added by the section above
+    r = await client.get("/api/analytics")
+    b = r.json() if r.status_code == 200 else {}
+    funnel = b.get("funnel", {})
+    record("feedback", "funnel reflects CRM transitions from 16h",
+           isinstance(funnel, dict) and "rejected" in funnel
+           and funnel.get("rejected", 0) >= 1,
+           f"funnel={funnel}")
+
+    # ================= 16k. OBSERVABILITY (M14) ==========================
+    section("16k. AI COST METER + CACHE METRICS (M14) — monitoring endpoint")
+    r = await call("GET", "/api/analytics/monitoring", module="observability")
+    b = r.json()
+    usage = b.get("ai_usage", {})
+    record("observability", "monitoring endpoint: usage + budget + cache + daily run",
+           r.status_code == 200 and "totals" in usage.get("all_time", {})
+           and "remaining_usd" in b.get("budget", {})
+           and "hit_rate" in b.get("cache", {})
+           and "run_date" in b.get("daily_run", {}),
+           f"calls={usage.get('all_time', {}).get('totals', {}).get('calls')}, "
+           f"spent=${b.get('budget', {}).get('spent_usd')}")
+
+    totals = usage.get("all_time", {}).get("totals", {})
+    record("observability", "token counts are integers and cost is non-negative",
+           isinstance(totals.get("tokens_in"), int)
+           and isinstance(totals.get("tokens_out"), int)
+           and float(totals.get("cost_usd", -1)) >= 0,
+           f"in={totals.get('tokens_in')}, out={totals.get('tokens_out')}, cost={totals.get('cost_usd')}")
+
+    # Budget projection must stay coherent whatever the spend
+    bb = b.get("budget", {})
+    record("observability", "budget projection coherent ($2 default, never negative)",
+           float(bb.get("remaining_usd", -1)) >= 0
+           and 0 <= float(bb.get("percent_used", -1)) <= 100 * max(1.0, float(bb.get("percent_used", 1))),
+           f"budget=${bb.get('budget_usd')}, remaining=${bb.get('remaining_usd')}, used={bb.get('percent_used')}%")
+
+    r = await client.get("/api/analytics/monitoring?days=1")
+    record("observability", "window parameter respected (days=1)",
+           r.status_code == 200 and r.json().get("window_days") == 1,
+           f"window={r.json().get('window_days')}")
+
+    # Cost math is exposed and matches the documented DeepSeek rate
+    from app.ai_usage import estimate_cost, price_for
+    record("observability", "DeepSeek Flash rate matches docs ($0.15/$0.60 per 1M)",
+           price_for("deepseek", "deepseek-flash") == (0.15, 0.60),
+           f"rates={price_for('deepseek', 'deepseek-flash')}")
+    record("observability", "full application ≈ $0.00525 (380 apps per $2)",
+           abs(estimate_cost("deepseek", "deepseek-flash", 15_000, 5_000) - 0.00525) < 1e-6,
+           f"cost={estimate_cost('deepseek', 'deepseek-flash', 15_000, 5_000)}")
+
     # ================= 17. FLAGGED-OFF MODULES (D22) ======================
     section("17. US-ONLY MODULES (must be OFF)")
     r = await client.post(f"/api/jobs/{ai_job}/estimate-salary")

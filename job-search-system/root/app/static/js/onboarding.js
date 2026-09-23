@@ -134,6 +134,7 @@ function showOnboardingWizard() {
                         <option value="openai">OpenAI (GPT)</option>
                         <option value="google">Google (Gemini)</option>
                         <option value="openrouter">OpenRouter</option>
+                        <option value="deepseek">DeepSeek</option>
                         <option value="ollama">Ollama (Local)</option>
                     </select>
                 </div>

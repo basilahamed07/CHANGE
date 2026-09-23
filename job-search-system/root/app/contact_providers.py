@@ -329,7 +329,16 @@ class ContactResearchService:
     async def research(self, job: dict, force: bool = False) -> dict:
         cached = await self.db.get_contact_research(job["id"])
         if cached and not force and self._fresh(cached):
+            # M14: cache-hit metric (never allowed to break research)
+            try:
+                await self.db.increment_metric("research_cache_hits")
+            except Exception:  # noqa: BLE001
+                pass
             return {**cached, "cache_hit": True}
+        try:
+            await self.db.increment_metric("research_cache_misses")
+        except Exception:  # noqa: BLE001
+            pass
 
         candidates: list[ContactCandidate] = []
         used_provider = ""

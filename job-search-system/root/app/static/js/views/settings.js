@@ -1235,6 +1235,7 @@ function renderTabAI(container, aiSettings, scraperKeys, emailSettings, embeddin
                         <option value="openai" ${aiProvider === 'openai' ? 'selected' : ''}>OpenAI</option>
                         <option value="google" ${aiProvider === 'google' ? 'selected' : ''}>Google (Gemini)</option>
                         <option value="openrouter" ${aiProvider === 'openrouter' ? 'selected' : ''}>OpenRouter</option>
+                        <option value="deepseek" ${aiProvider === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
                         <option value="bedrock" ${aiProvider === 'bedrock' ? 'selected' : ''}>AWS Bedrock</option>
                         <option value="ollama" ${aiProvider === 'ollama' ? 'selected' : ''}>Ollama (Local)</option>
                     </select>
@@ -1408,6 +1409,7 @@ function renderTabAI(container, aiSettings, scraperKeys, emailSettings, embeddin
         anthropic: ['claude-opus-4-20250514', 'claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022'],
         openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo', 'o1', 'o1-mini', 'o3-mini'],
         google: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+        deepseek: ['deepseek-flash', 'deepseek-v4-pro', 'deepseek-reasoner'],
         bedrock: [
             'us.anthropic.claude-sonnet-4-6',
             'us.anthropic.claude-opus-4-6-v1',

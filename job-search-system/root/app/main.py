@@ -41,6 +41,8 @@ def _build_ai_client(ai_settings: dict | None, settings=None, env_key: str = "")
     if settings is not None:
         if settings.openrouter_api_key:
             return AIClient("openrouter", api_key=settings.openrouter_api_key)
+        if settings.deepseek_api_key:
+            return AIClient("deepseek", api_key=settings.deepseek_api_key)
         if settings.anthropic_api_key:
             return AIClient("anthropic", api_key=settings.anthropic_api_key)
     if env_key:
@@ -77,6 +79,9 @@ async def lifespan(app: FastAPI):
     app.state.scrape_task = None
     app.state.db = Database(db_path)
     await app.state.db.init()
+    # M14: route the LLM cost meter into the DB so spend survives restarts
+    from app import ai_usage
+    ai_usage.set_db_sink(app.state.db.record_ai_usage)
     await app.state.db.migrate_resume_from_search_config()
     await app.state.db.migrate_normalize_posted_dates()
 
@@ -487,6 +492,8 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
     app.include_router(packages_router.router)
     from app.routers import outreach as outreach_router
     app.include_router(outreach_router.router)
+    from app.routers import crm as crm_router
+    app.include_router(crm_router.router)
 
     # --- Static files ---
     if not testing:

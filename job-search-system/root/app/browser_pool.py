@@ -12,12 +12,38 @@ except ImportError:
     async_playwright = None
     PLAYWRIGHT_AVAILABLE = False
 
+# playwright-stealth 1.x exposes stealth_async(page); 2.x exposes a Stealth
+# class applied at the context level. Normalise both behind apply_stealth().
 try:
-    from playwright_stealth import stealth_async
-    STEALTH_AVAILABLE = True
+    from playwright_stealth import Stealth as _Stealth
+    _STEALTH_V2 = True
 except ImportError:
-    stealth_async = None
-    STEALTH_AVAILABLE = False
+    _Stealth = None
+    _STEALTH_V2 = False
+
+try:
+    from playwright_stealth import stealth_async as _stealth_async_v1
+    _STEALTH_V1 = True
+except ImportError:
+    _stealth_async_v1 = None
+    _STEALTH_V1 = False
+
+STEALTH_AVAILABLE = _STEALTH_V1 or _STEALTH_V2
+_STEALTH_V2_INSTANCE = _Stealth() if _STEALTH_V2 else None
+
+
+async def apply_stealth(context_or_page) -> None:
+    """Apply anti-detection evasions to a context (v2) or page (v1)."""
+    if _STEALTH_V2 and _STEALTH_V2_INSTANCE is not None:
+        try:
+            await _STEALTH_V2_INSTANCE.apply_stealth_async(context_or_page)
+        except Exception as e:
+            logger.debug(f"Stealth v2 application failed: {e}")
+    elif _STEALTH_V1 and _stealth_async_v1 is not None:
+        try:
+            await _stealth_async_v1(context_or_page)
+        except Exception as e:
+            logger.debug(f"Stealth v1 application failed: {e}")
 
 COOKIE_DIR = os.path.join("data", "cookies")
 
@@ -70,6 +96,10 @@ class BrowserPool:
             locale="en-US",
             timezone_id="America/New_York",
         )
+
+        # Apply stealth evasions at the context level so every page inherits them
+        if STEALTH_AVAILABLE:
+            await apply_stealth(context)
 
         cookies = self._load_cookies(domain)
         if cookies:

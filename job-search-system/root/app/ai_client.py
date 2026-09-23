@@ -102,9 +102,17 @@ OPENAI_COMPAT_PROVIDERS = {
         "base_url": "https://openrouter.ai/api/v1",
         "default_model": "anthropic/claude-sonnet-4",
     },
+    # DeepSeek API is OpenAI-compatible (per api-docs.deepseek.com):
+    # base_url https://api.deepseek.com, auth via Bearer DEEPSEEK_API_KEY.
+    # "deepseek-flash" serves DeepSeek-V4.1-Flash; legacy deepseek-v4-flash
+    # names are accepted but billed at Flash price — prefer the current name.
+    "deepseek": {
+        "base_url": "https://api.deepseek.com",
+        "default_model": "deepseek-flash",
+    },
 }
 
-ALL_PROVIDERS = ["anthropic", "bedrock", "ollama", "openai", "google", "openrouter"]
+ALL_PROVIDERS = ["anthropic", "bedrock", "ollama", "openai", "google", "openrouter", "deepseek"]
 
 
 async def check_ai_reachable(client: "AIClient") -> tuple[bool, str]:
@@ -218,7 +226,18 @@ class AIClient:
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
+        await self._meter(message)
         return message.content[0].text
+
+    async def _meter(self, response) -> None:
+        """M14 cost meter: record tokens + estimated cost. Never raises."""
+        try:
+            from app import ai_usage
+            tokens_in, tokens_out = ai_usage.extract_usage(response)
+            await ai_usage.record_call(self.provider, self.model,
+                                       tokens_in, tokens_out)
+        except Exception as e:  # noqa: BLE001 — metering must never break a call
+            logger.debug("Token metering skipped: %s", e)
 
     def _bedrock_client(self):
         import anthropic
@@ -236,6 +255,7 @@ class AIClient:
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
+        await self._meter(message)
         return message.content[0].text
 
     async def _openai_chat(self, prompt: str, max_tokens: int) -> str:
@@ -246,6 +266,7 @@ class AIClient:
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
+        await self._meter(response)
         return response.choices[0].message.content or ""
 
     async def _ollama_chat(self, prompt: str, max_tokens: int) -> str:

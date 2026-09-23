@@ -27,14 +27,20 @@ TAG_MAP = {
     "react": "react",
     "node": "nodejs",
     "typescript": "typescript",
-    "engineer": "engineer",
+    "engineer": "engineering",
     "security": "security",
     "data": "data",
-    "ai": "ai",
+    # NOTE: the Jobicy API rejects tag "ai" with 400 Bad Request (verified
+    # 2026-09-23). "ai-ml" and "artificial-intelligence" are accepted.
+    "ai": "artificial-intelligence",
     "machine learning": "machine-learning",
+    "genai": "artificial-intelligence",
+    "generative ai": "artificial-intelligence",
+    "rag": "artificial-intelligence",
+    "llm": "artificial-intelligence",
 }
 
-DEFAULT_TAGS = ["ai", "machine learning", "python", "backend", "engineer"]
+DEFAULT_TAGS = ["artificial-intelligence", "machine-learning", "python", "backend", "engineering"]
 
 
 class JobicyScraper(BaseScraper):

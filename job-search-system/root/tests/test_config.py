@@ -52,5 +52,28 @@ def test_allow_send_defaults_false():
 
 def test_openrouter_key_env(monkeypatch):
     monkeypatch.setenv("JOBAGENT_OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setenv("JOBAGENT_DEEPSEEK_API_KEY", "sk-deepseek-test")
     s = Settings(_env_file=None)
     assert s.openrouter_api_key == "sk-or-test"
+    assert s.deepseek_api_key == "sk-deepseek-test"
+
+
+def test_deepseek_provider_registered():
+    """DeepSeek is an OpenAI-compatible provider with correct routing defaults."""
+    from app.ai_client import ALL_PROVIDERS, OPENAI_COMPAT_PROVIDERS, AIClient
+
+    assert "deepseek" in ALL_PROVIDERS
+    ds = OPENAI_COMPAT_PROVIDERS["deepseek"]
+    assert ds["base_url"] == "https://api.deepseek.com"
+    assert ds["default_model"] == "deepseek-flash"
+
+    client = AIClient("deepseek", api_key="sk-test")
+    assert client.base_url == "https://api.deepseek.com"
+    assert client.model == "deepseek-flash"
+
+
+def test_deepseek_model_override():
+    from app.ai_client import AIClient
+
+    client = AIClient("deepseek", api_key="sk-test", model="deepseek-v4-pro")
+    assert client.model == "deepseek-v4-pro"

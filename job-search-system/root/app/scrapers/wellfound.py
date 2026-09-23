@@ -5,7 +5,7 @@ import re
 import httpx
 from bs4 import BeautifulSoup
 
-from app.scrapers.base import BaseScraper, JobListing
+from app.scrapers.base import BaseScraper, JobListing, validate_salary
 
 logger = logging.getLogger(__name__)
 
@@ -57,17 +57,19 @@ DEFAULT_ROLES = [
 BROWSER_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
+    # NOTE: do NOT set Accept-Encoding manually — declaring "br" makes
+    # Cloudflare serve a Brotli body that httpx will not auto-decompress
+    # (manual headers disable its default negotiation), leaving the parser
+    # with binary garbage. Let httpx advertise encodings it can decode.
     "Referer": "https://wellfound.com/",
     "DNT": "1",
-    "Connection": "keep-alive",
     "Upgrade-Insecure-Requests": "1",
     "Sec-Fetch-Dest": "document",
     "Sec-Fetch-Mode": "navigate",
     "Sec-Fetch-Site": "same-origin",
     "Sec-Fetch-User": "?1",
     "Cache-Control": "max-age=0",
-}
+}  # "Connection"/"Keep-Alive" are forbidden headers managed by httpcore
 
 
 class WellfoundScraper(BaseScraper):
@@ -127,11 +129,22 @@ class WellfoundScraper(BaseScraper):
         """Extract job data from __NEXT_DATA__ script tag (Next.js SSR)."""
         soup = BeautifulSoup(html, "html.parser")
         script = soup.find("script", id="__NEXT_DATA__")
-        if not script or not script.string:
+        payload = script.string if script else None
+        if not payload:
+            # Wellfound emits <script id="__NEXT_DATA__" type="application/json"
+            # crossorigin="anonymous"> — BeautifulSoup may not expose .string
+            # when the tag has extra attributes, so fall back to regex.
+            match = re.search(
+                r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>',
+                html,
+                re.DOTALL,
+            )
+            payload = match.group(1) if match else None
+        if not payload:
             return []
 
         try:
-            data = json.loads(script.string)
+            data = json.loads(payload)
         except json.JSONDecodeError:
             return []
 
@@ -152,11 +165,59 @@ class WellfoundScraper(BaseScraper):
         # Try nested Apollo state (__APOLLO_STATE__ embedded in pageProps)
         apollo_state = props.get("apolloState") or props.get("__APOLLO_STATE__")
         if apollo_state and isinstance(apollo_state, dict):
-            for key, value in apollo_state.items():
-                if isinstance(value, dict) and value.get("__typename") in (
-                    "JobListing", "StartupJobListing", "Job",
-                ):
-                    jobs.append(value)
+            jobs.extend(self._extract_jobs_from_apollo_state(apollo_state))
+
+        return jobs
+
+    def _extract_jobs_from_apollo_state(self, apollo_state: dict) -> list[dict]:
+        """Extract jobs from an Apollo cache map (normalised GraphQL entities).
+
+        Wellfound's current SEO pages store results as
+        ``JobListingSearchResult:<id>`` entities under ``apolloState.data``
+        (legacy ``JobListing``/``StartupJobListing``/``Job`` typenames are
+        also accepted). Company info lives on sibling ``StartupResult``
+        entities; matching is done by the ``StartupResult:<id>`` reference
+        found inside ``ROOT_QUERY.talent.seoLandingPageJobSearchResults(...)``,
+        which lists startups in the same order as their highlighted jobs.
+        """
+        data_map = apollo_state.get("data") if isinstance(apollo_state.get("data"), dict) else apollo_state
+
+        job_entities: dict[str, dict] = {}
+        startup_entities: list[dict] = []
+        for key, value in data_map.items():
+            if not isinstance(value, dict):
+                continue
+            typename = value.get("__typename")
+            if typename in ("JobListing", "StartupJobListing", "Job", "JobListingSearchResult"):
+                job_entities[key] = value
+            elif typename == "StartupResult":
+                startup_entities.append(value)
+
+        jobs: list[dict] = []
+        if job_entities:
+            # Attach company names by resolving __ref links where possible.
+            startup_names: dict[str, str] = {}
+            for startup in startup_entities:
+                sid = str(startup.get("id", ""))
+                if sid:
+                    startup_names[sid] = startup.get("name", "")
+
+            for entity_key, job in job_entities.items():
+                enriched = dict(job)
+                if not enriched.get("startup") and not enriched.get("company"):
+                    # Try to recover the company from the entity key prefix
+                    # (e.g. "JobListingSearchResult:3392132" carries no ref).
+                    # StartupResult entities expose highlightedJobListings
+                    # refs — prefer those, then fall back to page order.
+                    for startup in startup_entities:
+                        refs = startup.get("highlightedJobListings") or []
+                        for ref in refs:
+                            if isinstance(ref, dict) and ref.get("__ref") == entity_key:
+                                enriched["startup"] = {"name": startup.get("name", "")}
+                                break
+                        if enriched.get("startup"):
+                            break
+                jobs.append(enriched)
 
         return jobs
 
@@ -243,20 +304,41 @@ class WellfoundScraper(BaseScraper):
         elif isinstance(startup, str):
             company = startup
 
-        location = item.get("location") or item.get("remote", "Remote") or "Remote"
-        if isinstance(location, dict):
-            location = location.get("name", "Remote")
+        location = ""
+        raw_location = item.get("location")
+        if isinstance(raw_location, dict):
+            location = raw_location.get("name", "")
+        elif isinstance(raw_location, str):
+            location = raw_location
+        if not location:
+            # JobListingSearchResult format: locationNames[] + remote flag
+            location_names = item.get("locationNames") or item.get("acceptedRemoteLocationNames") or []
+            if location_names and isinstance(location_names, list):
+                location = ", ".join(str(n) for n in location_names[:3])
+            elif item.get("remote") is True:
+                location = "Remote"
+        if not location:
+            location = "Remote"
 
         slug = item.get("slug", "")
         job_id = item.get("id", "")
         url = item.get("url", "")
-        if not url and slug:
+        if not url and slug and job_id:
+            # Current Wellfound job URLs are /jobs/<id>-<slug>
+            url = f"{BASE_URL}/jobs/{job_id}-{slug}"
+        elif not url and slug:
             url = f"{BASE_URL}/jobs/{slug}"
         elif not url and job_id:
             url = f"{BASE_URL}/jobs/{job_id}"
 
         salary_min = item.get("salaryMin") or item.get("salary_min")
         salary_max = item.get("salaryMax") or item.get("salary_max")
+        if salary_min is None or salary_max is None:
+            # JobListingSearchResult format: compensation is a string like
+            # "$150k – $280k" or "$90k".
+            comp_min, comp_max = _parse_compensation(item.get("compensation"))
+            salary_min = salary_min if salary_min is not None else comp_min
+            salary_max = salary_max if salary_max is not None else comp_max
 
         tags = item.get("tags", [])
         if isinstance(tags, list) and tags and isinstance(tags[0], dict):
@@ -337,3 +419,30 @@ def _parse_int(value) -> int | None:
         return int(value)
     except (ValueError, TypeError):
         return None
+
+
+def _parse_compensation(value) -> tuple[int | None, int | None]:
+    """Parse Wellfound's compensation string into (min, max) annual salary.
+
+    Handles formats like "$150k – $280k", "$90k", "€60k - €80k".
+    """
+    if not value or not isinstance(value, str):
+        return None, None
+    matches = re.findall(r"[$€£]?\s*([0-9]+(?:\.[0-9]+)?)\s*([kKmM]?)", value)
+    amounts: list[int] = []
+    for num, suffix in matches:
+        try:
+            amount = float(num)
+        except ValueError:
+            continue
+        if suffix.lower() == "k":
+            amount *= 1_000
+        elif suffix.lower() == "m":
+            amount *= 1_000_000
+        amounts.append(int(amount))
+    amounts = [a for a in amounts if validate_salary(a)]
+    if not amounts:
+        return None, None
+    if len(amounts) == 1:
+        return amounts[0], None
+    return min(amounts), max(amounts)

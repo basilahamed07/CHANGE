@@ -572,6 +572,31 @@ class Database:
                 FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
                 FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS ai_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider TEXT NOT NULL DEFAULT '',
+                model TEXT NOT NULL DEFAULT '',
+                tokens_in INTEGER NOT NULL DEFAULT 0,
+                tokens_out INTEGER NOT NULL DEFAULT 0,
+                cost_usd REAL NOT NULL DEFAULT 0,
+                purpose TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            )
+            ;
+            CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at)
+            ;
+            CREATE TABLE IF NOT EXISTS metrics (
+                name TEXT PRIMARY KEY,
+                value INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            )
+            ;
+            CREATE TABLE IF NOT EXISTS daily_runs (
+                run_date TEXT PRIMARY KEY,
+                state TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            ;
             CREATE TABLE IF NOT EXISTS career_suggestions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
@@ -767,6 +792,7 @@ class Database:
             "package_dir": "ALTER TABLE applications ADD COLUMN package_dir TEXT",
             "package_fingerprint": "ALTER TABLE applications ADD COLUMN package_fingerprint TEXT",
             "package_status": "ALTER TABLE applications ADD COLUMN package_status TEXT",
+            "package_built_at": "ALTER TABLE applications ADD COLUMN package_built_at TEXT",
         }
         for col, sql in app_migrations.items():
             if col not in app_columns:
@@ -1311,10 +1337,12 @@ class Database:
 
     async def set_package_meta(self, app_id: int, package_dir: str,
                                fingerprint: str, status: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
         await self.db.execute(
             """UPDATE applications SET package_dir = ?, package_fingerprint = ?,
-               package_status = ? WHERE id = ?""",
-            (package_dir, fingerprint, status, app_id))
+               package_status = ?, package_built_at = COALESCE(package_built_at, ?)
+               WHERE id = ?""",
+            (package_dir, fingerprint, status, now, app_id))
         await self.db.commit()
 
     async def get_candidate_evidence(self) -> list[dict]:
@@ -1337,6 +1365,10 @@ class Database:
             }
             for r in rows
         ]
+
+    async def get_all_applications(self) -> list[dict]:
+        cursor = await self.db.execute("SELECT * FROM applications")
+        return [dict(r) for r in await cursor.fetchall()]
 
     async def upsert_application(self, job_id: int, status: str):
         now = datetime.now(timezone.utc).isoformat()
@@ -3367,6 +3399,83 @@ class Database:
         )
         await self.db.commit()
         return cursor.rowcount > 0
+
+    # --- M14: observability (LLM cost meter + counters) ------------------
+
+    async def record_ai_usage(self, entry: dict) -> None:
+        """Persist one metered AI call (sink registered by main.py)."""
+        await self.db.execute(
+            """INSERT INTO ai_usage
+               (provider, model, tokens_in, tokens_out, cost_usd, purpose, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (entry.get("provider", ""), entry.get("model", ""),
+             int(entry.get("tokens_in") or 0), int(entry.get("tokens_out") or 0),
+             float(entry.get("cost_usd") or 0.0), entry.get("purpose", ""),
+             entry.get("created_at") or datetime.now(timezone.utc).isoformat()))
+        await self.db.commit()
+
+    async def get_ai_usage_rows(self, since: str | None = None) -> list[dict]:
+        if since:
+            cursor = await self.db.execute(
+                "SELECT * FROM ai_usage WHERE created_at >= ? ORDER BY id", (since,))
+        else:
+            cursor = await self.db.execute("SELECT * FROM ai_usage ORDER BY id")
+        return [dict(r) for r in await cursor.fetchall()]
+
+    async def increment_metric(self, name: str, amount: int = 1) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        await self.db.execute(
+            """INSERT INTO metrics (name, value, updated_at) VALUES (?, ?, ?)
+               ON CONFLICT(name) DO UPDATE SET
+               value = value + excluded.value, updated_at = excluded.updated_at""",
+            (name, amount, now))
+        await self.db.commit()
+
+    async def get_metrics(self) -> dict[str, int]:
+        cursor = await self.db.execute("SELECT name, value FROM metrics")
+        return {r[0]: r[1] for r in await cursor.fetchall()}
+
+    # --- M11: DailyRun persisted state ------------------------------------
+
+    async def save_daily_run_state(self, run_date: str, state: dict) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        await self.db.execute(
+            """INSERT INTO daily_runs (run_date, state, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(run_date) DO UPDATE SET
+               state = excluded.state, updated_at = excluded.updated_at""",
+            (run_date, json.dumps(state), now))
+        await self.db.commit()
+
+    async def get_daily_run_state(self, run_date: str) -> dict | None:
+        cursor = await self.db.execute(
+            "SELECT state FROM daily_runs WHERE run_date = ?", (run_date,))
+        row = await cursor.fetchone()
+        return json.loads(row[0]) if row else None
+
+    async def count_packages_created_on(self, run_date: str) -> int:
+        """NEW QUALIFYING PACKAGES for the day (Golden Rule 4) — packages born
+        ready_for_review+ count, one per job, keyed on the applications row."""
+        cursor = await self.db.execute(
+            """SELECT COUNT(*) FROM applications
+               WHERE package_dir IS NOT NULL AND package_dir != ''
+               AND DATE(COALESCE(package_built_at, applied_at)) = ?""",
+            (run_date,))
+        row = await cursor.fetchone()
+        return row[0] if row else 0
+
+    async def get_top_unpackaged_jobs(self, cutoff: int = 60, limit: int = 10) -> list[dict]:
+        """Eligible, scored-above-cutoff jobs with no package yet — best first."""
+        cursor = await self.db.execute(
+            """SELECT js.job_id, js.match_score FROM job_scores js
+               INNER JOIN jobs j ON j.id = js.job_id
+               LEFT JOIN applications a ON a.job_id = js.job_id
+               WHERE j.dismissed = 0 AND j.strategy_dismissed = 0
+               AND js.match_score >= ?
+               AND (a.package_dir IS NULL OR a.package_dir = '')
+               ORDER BY js.match_score DESC LIMIT ?""",
+            (cutoff, limit))
+        return [dict(r) for r in await cursor.fetchall()]
 
     # --- Career Suggestions ---
 

@@ -266,7 +266,7 @@ def _make_mock_pool(context):
 
 @pytest.mark.asyncio
 @patch("app.scrapers.indeed.PLAYWRIGHT_AVAILABLE", True)
-@patch("app.scrapers.indeed.STEALTH_AVAILABLE", False)
+@patch("app.browser_pool.STEALTH_AVAILABLE", False)
 @patch("app.scrapers.indeed.get_browser_pool")
 async def test_indeed_playwright_scrape(mock_get_pool):
     """Test Playwright scraping path with mocked browser."""
@@ -289,27 +289,27 @@ async def test_indeed_playwright_scrape(mock_get_pool):
 
 @pytest.mark.asyncio
 @patch("app.scrapers.indeed.PLAYWRIGHT_AVAILABLE", True)
-@patch("app.scrapers.indeed.STEALTH_AVAILABLE", True)
+@patch("app.browser_pool.STEALTH_AVAILABLE", True)
 @patch("app.scrapers.indeed.get_browser_pool")
-async def test_indeed_playwright_applies_stealth(mock_get_pool):
-    """Test that stealth_async is called when available."""
-    mock_stealth = AsyncMock()
+async def test_indeed_playwright_stealth_via_context(mock_get_pool):
+    """Stealth is applied by BrowserPool at context level, not per-page."""
     html_responses = [MOCK_HTML] * (1 + len(DEFAULT_KEYWORDS))
     page = _make_mock_page(html_responses)
     context = _make_mock_context(page)
     pool = _make_mock_pool(context)
     mock_get_pool.return_value = pool
 
-    with patch("app.scrapers.indeed.stealth_async", mock_stealth):
-        scraper = IndeedScraper()
-        await scraper.scrape()
+    scraper = IndeedScraper()
+    await scraper.scrape()
 
-    mock_stealth.assert_called_once_with(page)
+    # Playwright path succeeded (2 jobs) without needing per-page stealth
+    # because BrowserPool.get_context() applies evasions to the context.
+    pool.get_context.assert_called_once_with("indeed")
 
 
 @pytest.mark.asyncio
 @patch("app.scrapers.indeed.PLAYWRIGHT_AVAILABLE", True)
-@patch("app.scrapers.indeed.STEALTH_AVAILABLE", False)
+@patch("app.browser_pool.STEALTH_AVAILABLE", False)
 @patch("app.scrapers.indeed.get_browser_pool")
 async def test_indeed_playwright_captcha_retry(mock_get_pool):
     """Test that Playwright retries once on captcha detection."""
@@ -331,7 +331,7 @@ async def test_indeed_playwright_captcha_retry(mock_get_pool):
 
 @pytest.mark.asyncio
 @patch("app.scrapers.indeed.PLAYWRIGHT_AVAILABLE", True)
-@patch("app.scrapers.indeed.STEALTH_AVAILABLE", False)
+@patch("app.browser_pool.STEALTH_AVAILABLE", False)
 @patch("app.scrapers.indeed.get_browser_pool")
 async def test_indeed_playwright_fails_falls_back_to_httpx(mock_get_pool, httpx_mock):
     """Test fallback to httpx when Playwright raises an exception."""
@@ -350,7 +350,7 @@ async def test_indeed_playwright_fails_falls_back_to_httpx(mock_get_pool, httpx_
 
 @pytest.mark.asyncio
 @patch("app.scrapers.indeed.PLAYWRIGHT_AVAILABLE", True)
-@patch("app.scrapers.indeed.STEALTH_AVAILABLE", False)
+@patch("app.browser_pool.STEALTH_AVAILABLE", False)
 @patch("app.scrapers.indeed.get_browser_pool")
 async def test_indeed_playwright_empty_falls_back_to_httpx(mock_get_pool, httpx_mock):
     """Test fallback to httpx when Playwright returns no results."""

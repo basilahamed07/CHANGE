@@ -14,3 +14,11 @@ __pycache__/
 
 # Node
 node_modules/
+
+# Generated artifacts OUTSIDE root/ (root/data/* is ignored by root/.gitignore).
+# This holds application packages + E2E harness output (personal resume content).
+job-search-system/data/
+job-search-system/applications/
+
+# Chat transcripts exported by the agent client
+freebuff-chat-*.md

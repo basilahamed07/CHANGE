@@ -12,11 +12,12 @@ class Settings(BaseSettings):
     for domain config; env vars always win for secrets/runtime overrides.
     """
 
-    # --- AI providers (all five supported; OpenRouter is Basil's default) ---
+    # --- AI providers (OpenRouter is Basil's default; DeepSeek for paid volume) ---
     openrouter_api_key: str = ""
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     google_api_key: str = ""
+    deepseek_api_key: str = ""
     usajobs_api_key: str = ""
     adzuna_api_key: str = ""
     adzuna_app_id: str = ""

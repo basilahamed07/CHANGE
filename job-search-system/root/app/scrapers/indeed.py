@@ -12,16 +12,10 @@ from app.scrapers.base import BaseScraper, JobListing
 logger = logging.getLogger(__name__)
 
 try:
-    from app.browser_pool import (
-        get_browser_pool,
-        PLAYWRIGHT_AVAILABLE,
-        STEALTH_AVAILABLE,
-        stealth_async,
-    )
+    from app.browser_pool import get_browser_pool, PLAYWRIGHT_AVAILABLE
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
-    STEALTH_AVAILABLE = False
-    stealth_async = None
+    get_browser_pool = None
 
 DEFAULT_KEYWORDS = [
     "AI engineer remote",
@@ -184,12 +178,12 @@ class IndeedScraper(BaseScraper):
         try:
             page = await context.new_page()
 
-            if STEALTH_AVAILABLE and stealth_async:
-                await stealth_async(page)
+            # Note: anti-detection evasions (playwright-stealth) are applied
+            # at the browser-context level by BrowserPool.get_context().
 
             # Warm up: visit homepage to get Cloudflare cookies
             try:
-                await page.goto("https://www.indeed.com", wait_until="networkidle", timeout=30000)
+                await page.goto("https://www.indeed.com", wait_until="domcontentloaded", timeout=45000)
                 await asyncio.sleep(random.uniform(1.5, 3.0))
             except Exception as e:
                 logger.warning(f"Indeed homepage warmup failed: {e}")
@@ -202,7 +196,7 @@ class IndeedScraper(BaseScraper):
                 url = f"{SEARCH_URL}?q={quote_plus(keyword)}&l=remote&sort=date"
 
                 try:
-                    await page.goto(url, wait_until="networkidle", timeout=30000)
+                    await page.goto(url, wait_until="domcontentloaded", timeout=45000)
                     await asyncio.sleep(random.uniform(1.5, 3.0))
                 except Exception as e:
                     logger.warning(f"Indeed Playwright navigation failed for '{keyword}': {e}")
@@ -316,11 +310,18 @@ class IndeedScraper(BaseScraper):
         jobs = self._build_listings(raw_results)
 
         if not jobs:
-            logger.warning(
-                "Indeed scraper returned 0 results. Indeed aggressively blocks automated "
-                "requests. Install playwright (`uv pip install 'careerpulse[playwright]'` "
-                "&& `playwright install chromium`) for better results, or consider a paid "
-                "job data API."
-            )
+            if PLAYWRIGHT_AVAILABLE:
+                logger.warning(
+                    "Indeed scraper returned 0 results even with a real browser. "
+                    "Indeed/Cloudflare is blocking this server's IP (captcha served). "
+                    "Consider a residential proxy or a paid job data API for Indeed."
+                )
+            else:
+                logger.warning(
+                    "Indeed scraper returned 0 results. Indeed aggressively blocks automated "
+                    "requests. Install playwright (`uv sync --extra playwright` && "
+                    "`uv run playwright install chromium`) for better results, or consider a "
+                    "paid job data API."
+                )
 
         return jobs

@@ -90,6 +90,67 @@ window.__APOLLO_STATE__ = {
 </html>
 """
 
+# Current Wellfound format (verified live 2026-09-23): Apollo cache under
+# __NEXT_DATA__ -> pageProps.apolloState.data with JobListingSearchResult
+# entities and StartupResult siblings holding company names.
+MOCK_SEARCH_RESULT_HTML = """
+<html>
+<head>
+<script id="__NEXT_DATA__" type="application/json" crossorigin="anonymous">
+{
+  "props": {
+    "pageProps": {
+      "apolloState": {
+        "data": {
+          "ROOT_QUERY": {
+            "__typename": "Query",
+            "talent": {"__typename": "Talent", "id": null}
+          },
+          "JobListingSearchResult:3392132": {
+            "__typename": "JobListingSearchResult",
+            "id": "3392132",
+            "title": "Backend Engineer",
+            "slug": "backend-engineer",
+            "description": "Build scalable backend systems in Go and Python.",
+            "jobType": "full-time",
+            "remote": true,
+            "locationNames": ["San Francisco"],
+            "acceptedRemoteLocationNames": ["United States"],
+            "compensation": "$150k \u2013 $280k",
+            "liveStartAt": 1756404860
+          },
+          "JobListingSearchResult:3392125": {
+            "__typename": "JobListingSearchResult",
+            "id": "3392125",
+            "title": "AI Product Engineer",
+            "slug": "ai-product-engineer",
+            "description": "Build LLM-powered product features and RAG pipelines.",
+            "jobType": "full-time",
+            "remote": false,
+            "locationNames": ["New York"],
+            "compensation": "$120k"
+          },
+          "StartupResult:4294719": {
+            "__typename": "StartupResult",
+            "id": "4294719",
+            "name": "Speak",
+            "slug": "speak-app",
+            "highlightedJobListings": [
+              {"__ref": "JobListingSearchResult:3392132"},
+              {"__ref": "JobListingSearchResult:3392125"}
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+</script>
+</head>
+<body></body>
+</html>
+"""
+
 # JSON-LD structured data format
 MOCK_JSONLD_HTML = """
 <html>
@@ -172,6 +233,31 @@ async def test_wellfound_parse_apollo_state(httpx_mock):
     backend = next(j for j in jobs if "Backend" in j.title)
     assert backend.company == "DataFlow"
     assert backend.location == "Remote"
+
+
+@pytest.mark.httpx_mock(can_send_already_matched_responses=True)
+@pytest.mark.asyncio
+async def test_wellfound_parse_job_listing_search_result(httpx_mock):
+    """Current Wellfound Apollo format: JobListingSearchResult entities."""
+    httpx_mock.add_response(
+        url=re.compile(r"https://wellfound\.com/role/.*"),
+        text=MOCK_SEARCH_RESULT_HTML,
+    )
+    scraper = WellfoundScraper()
+    jobs = await scraper.scrape()
+    assert len(jobs) == 2
+
+    backend = next(j for j in jobs if j.title == "Backend Engineer")
+    assert backend.company == "Speak"
+    assert backend.location == "San Francisco"
+    assert backend.salary_min == 150000
+    assert backend.salary_max == 280000
+    assert backend.url == "https://wellfound.com/jobs/3392132-backend-engineer"
+
+    ai = next(j for j in jobs if j.title == "AI Product Engineer")
+    assert ai.company == "Speak"
+    assert ai.salary_min == 120000
+    assert ai.salary_max is None
 
 
 @pytest.mark.httpx_mock(can_send_already_matched_responses=True)
@@ -312,3 +398,15 @@ async def test_wellfound_int_parsing():
     assert _parse_int("120000") == 120000
     assert _parse_int(None) is None
     assert _parse_int("invalid") is None
+
+
+def test_wellfound_compensation_parsing():
+    """Compensation strings like '$150k \u2013 $280k' parse to salary bounds."""
+    from app.scrapers.wellfound import _parse_compensation
+
+    assert _parse_compensation("$150k \u2013 $280k") == (150000, 280000)
+    assert _parse_compensation("$90k") == (90000, None)
+    assert _parse_compensation("\u20ac60k - \u20ac80k") == (60000, 80000)
+    assert _parse_compensation("") == (None, None)
+    assert _parse_compensation(None) == (None, None)
+    assert _parse_compensation("Competitive") == (None, None)

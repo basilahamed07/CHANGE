@@ -31,6 +31,7 @@ _KEY_PREFIXES = {
     "openai": "sk-",
     "anthropic": "sk-ant-",
     "google": "AIza",
+    "deepseek": "sk-",
 }
 
 

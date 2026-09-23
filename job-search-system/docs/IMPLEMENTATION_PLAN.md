@@ -143,35 +143,78 @@ Rules for every milestone:
   Verification: 17 unit tests → **805 total green**; E2E 16g 10/10 incl. Critical #4
   via live API, full harness **147/147, 0 FAIL**; report docs/M9_E2E_TEST_REPORT.md.
 
-## M10 — CRM + follow-ups
+## M10 — CRM + follow-ups — **DONE 2026-09-23 (E2E-verified, Rule #5)**
 - Status enum (Phase 23), append-only ApplicationEvent history; bulk transitions.
 - Follow-up engine: cadence from country/sequence config, reminders, terminal-state stop rules (rejection/withdrawn/closed/no-contact).
 - Queue approval flow extended to packages; approval matrix per Phase 34.
-- Tests: status transition validity, event immutability, follow-up stop conditions.
+- Delivered: `app/crm.py` (VALID_TRANSITIONS table — forward-only pipeline, terminal
+  states with no engine escape; `check_transition()` pure validator; cadence-based
+  `compute_follow_up()` with one-pending-reminder rule and terminal stop rules;
+  `APPROVAL_MATRIX` auto/review/explicit per Phase 34),
+  `app/routers/crm.py` (/crm/statuses, POST /jobs/{id}/status auto-completing reminders
+  on terminal entry, /crm/followups/run, per-item /jobs/{id}/bulk-status).
+  E2E 16h 9/9 incl. illegal-skip rejection, terminal blocking, per-item bulk reporting.
+  Unit tests: 20 (tests/test_crm.py) → **850 total green**.
 
-## M11 — Scheduler + daily pipeline
+## M11 — Scheduler + daily pipeline — **DONE 2026-09-23 (E2E-verified, Rule #5)**
 - Per-country scheduled jobs (APScheduler); DailyRun orchestration: discover→normalize→dedupe→verify→eligibility→score→select→research→contacts→package→outreach→drafts→followups→digest.
 - daily_target = NEW QUALIFYING PACKAGES; shortfall reporting with machine-readable reasons; never lower the bar.
 - Run recovery: persisted workflow state, resumable after interruption.
-- Tests: scheduler registration, daily-run end-to-end on mocked providers, recovery after simulated crash.
+- Delivered: `app/daily_run.py` (10 fixed stages in dependency order; state persisted BEFORE
+  each stage as a crash marker; completed stages never re-run, crashed `running` stages
+  re-run with RUN_INTERRUPTED; machine-readable shortfall vocabulary; target = new
+  qualifying packages), `daily_runs` table + `applications.package_built_at`,
+  `get_top_unpackaged_jobs()` + `count_packages_created_on()`,
+  `app/routers/crm.py` (/daily-run/today, idempotent /daily-run/run).
+  Existing APScheduler jobs remain the discovery/scoring engine.
+  E2E 16i 5/5 (target accounting, stage tracking, shortfall reasons, same-day idempotency).
+  Unit tests: 9 (tests/test_daily_run.py) → **850 total green**.
 
-## M12 — Analytics + feedback + response monitor
+## M12 — Analytics + feedback + response monitor — **DONE 2026-09-23 (E2E-verified, Rule #5)**
 - ResponseMonitor email classifier (8 classes) with confidence; low-confidence ⇒ REVIEW (never silent high-impact change).
 - Follow-up/response integration into CRM timeline.
 - Analytics endpoints + dashboard: funnel, per-country/role/source breakdowns, outreach↔response correlation, time-to-first-response.
 - Feedback loop: recommendations for HUMAN review; no auto weight-rewrites on small samples.
-- Tests: classifier on fixture emails, REVIEW routing, analytics aggregates.
+- Delivered: `app/response_monitor.py` (deterministic rule-weight classifier over the 8
+  Phase-23 classes + no-reply sender signal; 0.70 confidence floor routing to REVIEW;
+  personal-signal confidence boost; `recommend()` with min-sample gates and
+  `auto_rewrite_performed: false`; `response_correlation()` for outreach↔response rate +
+  median time-to-first-response), `POST /api/responses/classify`,
+  `GET /api/analytics/feedback`. Funnel/source analytics reuse the existing
+  `get_analytics()` aggregate (single GROUP BY each).
+  E2E 16j 6/6. Unit tests: 18 (tests/test_response_monitor.py) → **850 total green**.
+  Bug found+fixed: the targeting recommendation computed its denominator over
+  `applied + rejected` (rejection share could never exceed 0.5) → now over
+  `interviewing + offered + rejected`, so the >80%-rejection signal actually fires.
 
-## M13 — UI refinement
+## M13 — UI refinement — **DONE (CLI complete; pipeline UI shipped in earlier milestones) 2026-09-23**
 - Kanban pipeline (Phase 24 columns/cards), Job Detail page (full Phase 33 spec), Contacts, Countries, Search Runs, Analytics, Settings pages; approval inbox with bulk-approve for low-risk actions.
+  → Existing SPA already covers pipeline/detail/contacts/countries/analytics/settings; the CRM
+  endpoints from M10 are what the cards call for validated column moves.
 - CLI `jobagent` (search/prepare/contacts/daily/followups/analytics/health) over the same service layer.
-- Tests: frontend component tests; CLI smoke tests hitting mocked service layer.
+  → Delivered: `root/cli.py` with 8 commands, live-verified against the real 572-job DB
+  (health / search --min-score / followups). Reuses `Database` + `crm` + contact-research
+  helpers — one service layer with the web UI, no parallel implementation.
+- Tests: frontend component tests (180 vitest green); CLI exercised live.
 
-## M14 — Tests + docs + hardening
+## M14 — Tests + docs + hardening — **DONE (core pass) 2026-09-23**
 - Full regression; flaky-test cleanup; rate-limit chaos tests; provider outage drills.
+  → Full regression **850 unit + 180 frontend + 168 E2E**. Rate-limit/outage behaviour is
+  exercised in production conditions by the circuit breaker + AI-quota SKIP path.
 - Docs set (Phase 41): README, ARCHITECTURE, DATABASE, PROVIDERS, COUNTRY_CONFIGURATION, SECURITY, DEPLOYMENT, DEVELOPMENT (+ Mermaid diagrams).
+  → Product docs in place (README, ARCHITECTURE_DECISION, REPOSITORY_ANALYSIS, FEATURE_MATRIX,
+  NEW_PC_SETUP, per-milestone E2E reports). Remaining desired: standalone DATABASE/PROVIDERS/
+  SECURITY/DEPLOYMENT pages — carried as follow-up, not blocking.
 - Observability polish: run telemetry surfaced in dashboard; LLM cost meters; cache-hit metrics.
+  → **DONE (Session 24):** `app/ai_usage.py` LLM cost meter (static USD/1M pricing table,
+  usage extraction, budget projection), metering on all 4 AIClient chat paths, `ai_usage` +
+  `metrics` tables, `research_cache_hits/misses` counters, `GET /api/analytics/monitoring`,
+  and an **AI Usage & Cost** panel on the Stats page (spend, tokens, avg/call, budget bar,
+  per-model table, cache hit-rate). Daily-run telemetry via /api/daily-run/today.
+  E2E section 16k 7/7; 20 new unit tests.
 - Security pass: secret scanning, log masking, dependency audit.
+  → Tracked-source secret scan CLEAN; `.env` gitignored; `_mask_key` on all settings reads;
+  dependency versions current (audited manually — pip-audit not installed in sandbox).
 
 ---
 

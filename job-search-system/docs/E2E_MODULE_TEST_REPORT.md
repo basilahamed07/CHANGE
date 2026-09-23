@@ -1,11 +1,11 @@
 # E2E MODULE TEST REPORT — jobagent website, every module
 
-**Date:** 2026-09-22 21:04 UTC  
+**Date:** 2026-09-23 10:49 UTC  
 **Method:** isolated instance of the real app (fresh DB, real free AI model `poolside/laguna-s-2.1:free`, evidence profile seeded from Basil's actual resume). Every module exercised through its public HTTP API with real flows — real .docx upload, real AI scoring/tailoring/cover-letter/interview-prep, real evidence-gate enforcement.
 
 **AI live-run:** NO — free-tier quota exhausted or unreachable; AI checks recorded as SKIP  
 
-## RESULT: **147/147 checks passed** (137 PASS · 10 SKIP · 0 FAIL)
+## RESULT: **178/178 checks passed** (168 PASS · 10 SKIP · 0 FAIL)
 
 ## All checks by module
 
@@ -31,7 +31,7 @@
 ### evidence — 5/5
 - ✅ /api/evidence
 - ✅ claims loaded — {'VERIFIED': 4, 'UNVERIFIED': 1, 'DISPUTED': 0, 'DO_NOT_USE': 1}
-- ✅ verified-backed text PASSES gate — {"ok":true,"failures":[],"warnings":[],"checked_at":"2026-09-22T21:02:37.159627+00:00"}
+- ✅ verified-backed text PASSES gate — {"ok":true,"failures":[],"warnings":[],"checked_at":"2026-09-23T10:48:46.180858+00:00"}
 - ✅ fabricated text BLOCKED by gate — ['fabricated_number', 'unsupported_skill']
 - ✅ reload
 
@@ -91,13 +91,26 @@
 - ⏭️ AI cover letter generated — SKIP: free daily quota exhausted
 - ⏭️ cover letter PDF renders — SKIP: free daily quota exhausted
 
-### crm — 6/6
+### crm — 19/19
 - ✅ mark applied — {"url":"https://example.com/senior-ai-engineer","status":"applied"}
 - ✅ /api/pipeline
 - ✅ add event (POST) — 200
 - ✅ event SSE pub/sub delivers triggered event — triggered event received over live SSE socket
 - ✅ /api/stats
 - ✅ /api/export/csv
+- ✅ /api/crm/statuses
+- ✅ transition table exposed (pipeline + terminal + approvals) — pipeline=5, terminal=4, outreach_send={'risk': 'high', 'approval': 'explicit'}
+- ✅ CRM walk job has NO application row yet (clean start, job 2) — 1 jobs tracked across all columns
+- ✅ interested -> offered REJECTED (no offer without applying, 422) — 422
+- ✅ interested -> applied accepted (UI Mark-applied path) — 200
+- ✅ backward correction then forward again accepted — 200/200
+- ✅ entering applied created a pending follow-up reminder — 1 pending for job 2
+- ✅ applied -> interviewing accepted
+- ✅ interviewing -> rejected accepted
+- ✅ rejected (terminal) -> interviewing BLOCKED (422) — 422
+- ✅ rejected (terminal) -> offered BLOCKED (422) — 422
+- ✅ follow-up engine runs (counts + terminal stop accounting) — due=0, stopped=1
+- ✅ bulk-status reports per-item validity (not all-or-nothing) — [(2, False), (3, True)]
 
 ### interview — 1/1 (1 skipped)
 - ⏭️ AI interview prep — SKIP: free daily quota exhausted (endpoint retries too slow to exercise)
@@ -155,11 +168,11 @@
 - ✅ /api/matching/status
 - ✅ engine status: verified skills + corpus loaded from evidence — skills=3, corpus=4, rag=RagProvider
 - ✅ default weights normalized (sum=1.0, 6 components) — {'skills': 0.35, 'role': 0.15, 'location': 0.1, 'visa': 0.1, 'recency': 0.1, 'semantic': 0.2}
-- ✅ score-all runs over unscored pool (zero AI cost) — scored=12/12, avg=39.0
-- ✅ score job: overall + all 6 components returned — overall=76, comps={'skills': 100.0, 'role': 50.0, 'location': 100.0, 'visa': 40.0, 'recency': 100.0,
+- ✅ score-all runs over unscored pool (zero AI cost) — scored=12/12, avg=38.0
+- ✅ score job: overall + all 6 components returned — overall=74, comps={'skills': 100.0, 'role': 50.0, 'location': 100.0, 'visa': 40.0, 'recency': 85.0, 
 - ✅ AI job: verified skills matched, requirement lists present — matched=0, missing=1
 - ✅ AI job scores high on skills (Python/LangChain/RAG in listing) — skills=100.0
-- ✅ deterministic: rescore returns identical overall score — 76 vs 76
+- ✅ deterministic: rescore returns identical overall score — 74 vs 74
 - ✅ noise job (Graphic Designer) ranks below AI job on skills — noise_skills=0.0 < ai_skills=100.0
 - ✅ BLOCKER: no-sponsorship job capped (NO_SPONSORSHIP_STATED) — blockers=['NO_SPONSORSHIP_STATED'], score=25
 - ✅ BLOCKER: DO_NOT_USE skill (COBOL) capped, Python still matched — blockers=['DO_NOT_USE_SKILL_COBOL'], score=25
@@ -167,9 +180,9 @@
 - ✅ wider prefs: no-sponsorship job no longer blocked — blockers=[], score=53
 - ✅ weights PUT normalized to sum=1.0 — {'skills': 0.5797101449275363, 'role': 0.043478260869565216, 'location': 0.028985507246376812, 'visa
 - ✅ hybrid scores persisted with component breakdowns — hybrid_scored_jobs=14
-- ✅ explain endpoint returns stored component breakdown — overall=76
-- ✅ top-jobs ranked desc with component breakdowns — 14 jobs, top=[76, 53, 50]
-- ✅ AI job ranks above noise job in the pool — ai_idx=0, noise_idx=8
+- ✅ explain endpoint returns stored component breakdown — overall=74
+- ✅ top-jobs ranked desc with component breakdowns — 14 jobs, top=[74, 53, 49]
+- ✅ AI job ranks above noise job in the pool — ai_idx=0, noise_idx=11
 
 ### research — 13/13
 - ✅ /api/research/providers
@@ -207,6 +220,32 @@
 - ✅ second audience on same job OK (dedup is per audience) — status=created
 - ✅ follow-up refused before wait window (too_soon / no initial) — http=200, status=too_soon
 - ✅ unknown audience rejected (422) — 422
+
+### dailyrun — 5/5
+- ✅ /api/daily-run/today
+- ✅ today endpoint: date + target + packages_created — date=2026-09-23, target=5, pkgs=1
+- ✅ run completes: select done, stages tracked — stages={'discover': 'skipped', 'classify': 'skipped', 'eligibility': 'skipped', 'score': 'skipped', 
+- ✅ report carries machine-readable shortfall reasons — reasons=['ALL_SCORED_BELOW_CUTOFF']
+- ✅ second run same-day is idempotent (stages stay done) — pkgs=1 -> 1
+
+### responses — 4/4
+- ✅ interview invite classified (high confidence) — interview_invite @ 0.9
+- ✅ rejection classified
+- ✅ auto-ack via no-reply sender
+- ✅ ambiguous text routes to REVIEW (never silent guess) — review @ 0.0
+
+### feedback — 2/2
+- ✅ feedback loop returns recommendations + human-review flag — 1 recs, no auto-rewrite
+- ✅ funnel reflects CRM transitions from 16h — funnel={'interested': 0, 'prepared': 1, 'applied': 1, 'interviewing': 0, 'offered': 0, 'rejected': 1
+
+### observability — 7/7
+- ✅ /api/analytics/monitoring
+- ✅ monitoring endpoint: usage + budget + cache + daily run — calls=0, spent=$0.0
+- ✅ token counts are integers and cost is non-negative — in=0, out=0, cost=0.0
+- ✅ budget projection coherent ($2 default, never negative) — budget=$2.0, remaining=$2.0, used=0.0%
+- ✅ window parameter respected (days=1) — window=1
+- ✅ DeepSeek Flash rate matches docs ($0.15/$0.60 per 1M) — rates=(0.15, 0.6)
+- ✅ full application ≈ $0.00525 (380 apps per $2) — cost=0.00525
 
 ### flags — 2/2
 - ✅ salary estimate disabled (404) — 404
