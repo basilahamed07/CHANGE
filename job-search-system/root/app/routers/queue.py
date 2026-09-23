@@ -4,6 +4,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ async def add_to_queue(request: Request):
     job_id = body.get("job_id")
     if not job_id:
         raise HTTPException(400, "job_id is required")
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -28,18 +29,19 @@ async def add_to_queue(request: Request):
 
 @router.get("/queue")
 async def get_queue(request: Request, status: str | None = Query(None)):
-    items = await request.app.state.db.get_queue(status=status)
+    items = await _db(request).get_queue(status=status)
     return {"queue": items}
 
 
 @router.post("/queue/prepare-all")
 async def prepare_all_queued(request: Request):
-    tailor = request.app.state.tailor
+    ai = await request.app.state.ai_state_for(request)
+    tailor = ai["tailor"]
     if not tailor:
         if not getattr(request.app.state, "ai_client", None):
             raise HTTPException(503, "No AI provider configured. Go to Settings → AI to set one up.")
         raise HTTPException(503, "No resume uploaded. Go to Settings → Resume to upload one.")
-    db = request.app.state.db
+    db = _db(request)
     queued = await db.get_queue(status="queued")
     prepared = 0
     failed = 0
@@ -81,7 +83,7 @@ async def prepare_all_queued(request: Request):
 
 @router.post("/queue/{queue_id}/submit-for-review")
 async def submit_queue_for_review(request: Request, queue_id: int):
-    db = request.app.state.db
+    db = _db(request)
     item = await db.get_queue_item(queue_id)
     if not item:
         raise HTTPException(404, "Queue item not found")
@@ -91,7 +93,7 @@ async def submit_queue_for_review(request: Request, queue_id: int):
 
 @router.post("/queue/{queue_id}/approve")
 async def approve_queue_item(request: Request, queue_id: int):
-    db = request.app.state.db
+    db = _db(request)
     item = await db.get_queue_item(queue_id)
     if not item:
         raise HTTPException(404, "Queue item not found")
@@ -102,7 +104,7 @@ async def approve_queue_item(request: Request, queue_id: int):
 
 @router.post("/queue/{queue_id}/reject")
 async def reject_queue_item(request: Request, queue_id: int):
-    db = request.app.state.db
+    db = _db(request)
     item = await db.get_queue_item(queue_id)
     if not item:
         raise HTTPException(404, "Queue item not found")
@@ -113,7 +115,7 @@ async def reject_queue_item(request: Request, queue_id: int):
 
 @router.post("/queue/{queue_id}/fill-status")
 async def update_fill_status(request: Request, queue_id: int):
-    db = request.app.state.db
+    db = _db(request)
     item = await db.get_queue_item(queue_id)
     if not item:
         raise HTTPException(404, "Queue item not found")
@@ -137,13 +139,13 @@ async def update_fill_status(request: Request, queue_id: int):
 
 @router.post("/queue/approve-all")
 async def approve_all_queue(request: Request):
-    count = await request.app.state.db.bulk_update_queue_status("review", "approved")
+    count = await _db(request).bulk_update_queue_status("review", "approved")
     return {"ok": True, "approved": count}
 
 
 @router.post("/queue/reject-all")
 async def reject_all_queue(request: Request):
-    count = await request.app.state.db.bulk_update_queue_status("review", "rejected")
+    count = await _db(request).bulk_update_queue_status("review", "rejected")
     return {"ok": True, "rejected": count}
 
 
@@ -171,7 +173,7 @@ async def queue_events(request: Request):
 
 @router.delete("/queue/{queue_id}")
 async def remove_queue_item(request: Request, queue_id: int):
-    removed = await request.app.state.db.remove_from_queue(queue_id)
+    removed = await _db(request).remove_from_queue(queue_id)
     if not removed:
         raise HTTPException(404, "Queue item not found")
     return {"ok": True}

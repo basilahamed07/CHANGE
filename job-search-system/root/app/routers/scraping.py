@@ -16,6 +16,7 @@ from app.scheduler import (
     run_scrape_cycle,
 )
 from app.scrapers import ALL_SCRAPERS
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +161,7 @@ async def _scrape_and_score(app, task_id: str) -> None:
 
 @router.get("/health")
 async def health(request: Request):
-    db: Database = request.app.state.db
+    db: Database = _db(request)
 
     db_ok = False
     try:
@@ -301,7 +302,7 @@ async def scrape_progress(request: Request):
 
 @router.post("/jobs/enrich")
 async def enrich_jobs(request: Request):
-    bg_db = getattr(request.app.state, "bg_db", request.app.state.db)
+    bg_db = getattr(request.app.state, "bg_db", _db(request))
     enriched = await run_enrichment_cycle(bg_db, limit=50)
     return {"enriched": enriched}
 
@@ -377,19 +378,19 @@ async def rescore_all(request: Request):
 
 @router.post("/dismiss-stale")
 async def dismiss_stale(request: Request):
-    dismissed = await request.app.state.db.auto_dismiss_stale()
+    dismissed = await _db(request).auto_dismiss_stale()
     return {"ok": True, "dismissed": dismissed}
 
 
 @router.post("/clear-jobs")
 async def clear_jobs(request: Request):
-    await request.app.state.db.clear_jobs()
+    await _db(request).clear_jobs()
     return {"ok": True, "message": "All jobs, scores, and applications cleared"}
 
 
 @router.post("/clear-all")
 async def clear_all(request: Request):
-    await request.app.state.db.clear_all()
+    await _db(request).clear_all()
     request.app.state.matcher = None
     request.app.state.tailor = None
     return {"ok": True, "message": "All data cleared"}

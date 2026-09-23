@@ -29,6 +29,14 @@ class Credentials(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class CreateUserRequest(Credentials):
+    role: str = "user"
+
+
+class ResetPasswordRequest(BaseModel):
+    new_password: str = Field(min_length=8, max_length=256)
+
+
 class BootstrapRequest(Credentials):
     pass
 
@@ -89,6 +97,21 @@ async def bootstrap(body: BootstrapRequest, request: Request, response: Response
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
     await store.record_admin_action(user["id"], "bootstrap_admin", user["username"])
+
+    # M15b: adopt the pre-multi-user default DB into the new admin's workspace
+    # so existing data (E2E seed, Basil's production pool) survives bootstrap.
+    try:
+        moved = await request.app.state.workspaces.migrate_single_user(
+            request.app.state.db_path.rsplit("/", 1)[0], user)
+        if moved and moved != "nothing to move (already migrated)":
+            import logging
+            logging.getLogger(__name__).info(
+                "M15b bootstrap migration: moved %s into admin workspace", moved)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "workspace migration at bootstrap failed (non-fatal)")
+
     token = await store.create_session(user["id"])
     await store.touch_last_login(user["id"])
     _set_session_cookie(response, token)
@@ -158,3 +181,73 @@ async def change_password(body: ChangePasswordRequest, request: Request):
     await store.set_password(user["id"], body.new_password)
     # set_password destroys all sessions (including this one) — user re-logs in.
     return {"ok": True, "message": "password changed — please log in again"}
+
+
+# ------------------------------------------------------- admin: user management
+# Pulled forward from M15d: admin can add users, disable/enable them, and reset
+# passwords. Every action is audit-logged to admin_actions.
+
+async def _require_admin(request: Request) -> tuple[SystemStore, dict]:
+    """Resolve the session user directly (works with or without the guard)."""
+    store = await _ensure_store(request)
+    user = await store.resolve_session(request.cookies.get(SESSION_COOKIE, ""))
+    if user is None:
+        raise HTTPException(401, "not authenticated")
+    if user.get("role") != "admin":
+        raise HTTPException(403, "admin role required")
+    return store, user
+
+
+@router.get("/users")
+async def list_users(request: Request):
+    store, _admin = await _require_admin(request)
+    return {"users": await store.list_users()}
+
+
+@router.post("/users")
+async def create_user(body: CreateUserRequest, request: Request):
+    store, admin = await _require_admin(request)
+    try:
+        user = await store.create_user(body.username, body.password, role=body.role)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    await store.record_admin_action(
+        admin["id"], "create_user", f"{user['username']} role={user['role']}")
+    return {"ok": True, "user": {k: user[k] for k in
+            ("id", "username", "role", "is_active", "created_at")}}
+
+
+@router.post("/users/{user_id}/disable")
+async def disable_user(user_id: int, request: Request):
+    store, admin = await _require_admin(request)
+    if user_id == admin["id"]:
+        raise HTTPException(422, "you cannot disable your own admin account")
+    target = await store.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "user not found")
+    await store.set_user_active(user_id, False)  # also destroys their sessions
+    await store.record_admin_action(admin["id"], "disable_user", target["username"])
+    return {"ok": True, "username": target["username"], "is_active": False}
+
+
+@router.post("/users/{user_id}/enable")
+async def enable_user(user_id: int, request: Request):
+    store, admin = await _require_admin(request)
+    target = await store.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "user not found")
+    await store.set_user_active(user_id, True)
+    await store.record_admin_action(admin["id"], "enable_user", target["username"])
+    return {"ok": True, "username": target["username"], "is_active": True}
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_password(user_id: int, body: ResetPasswordRequest, request: Request):
+    store, admin = await _require_admin(request)
+    target = await store.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "user not found")
+    await store.set_password(user_id, body.new_password)  # destroys their sessions
+    await store.record_admin_action(admin["id"], "reset_password", target["username"])
+    return {"ok": True, "username": target["username"],
+            "message": "password reset — user must log in again"}

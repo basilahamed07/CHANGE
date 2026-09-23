@@ -2,6 +2,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 
 from app.database import Database
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 
@@ -10,14 +11,14 @@ router = APIRouter(prefix="/api")
 
 @router.get("/jobs/{job_id}/interviews")
 async def list_interviews(job_id: int, request: Request):
-    db: Database = request.app.state.db
+    db: Database = _db(request)
     rounds = await db.get_interview_rounds(job_id)
     return {"rounds": rounds}
 
 
 @router.post("/jobs/{job_id}/interviews")
 async def create_interview(job_id: int, request: Request):
-    db: Database = request.app.state.db
+    db: Database = _db(request)
     body = await request.json()
     round_id = await db.create_interview_round(
         job_id,
@@ -42,7 +43,7 @@ async def create_interview(job_id: int, request: Request):
 
 @router.put("/interviews/{round_id}")
 async def update_interview(round_id: int, request: Request):
-    db: Database = request.app.state.db
+    db: Database = _db(request)
     body = await request.json()
     await db.update_interview_round(round_id, **body)
     return {"ok": True}
@@ -50,14 +51,14 @@ async def update_interview(round_id: int, request: Request):
 
 @router.delete("/interviews/{round_id}")
 async def delete_interview(round_id: int, request: Request):
-    db: Database = request.app.state.db
+    db: Database = _db(request)
     await db.delete_interview_round(round_id)
     return {"ok": True}
 
 
 @router.post("/interviews/{round_id}/save-contact")
 async def promote_to_contact(round_id: int, request: Request):
-    db: Database = request.app.state.db
+    db: Database = _db(request)
     r = await db.get_interview_round(round_id)
     if not r:
         raise HTTPException(404, "Interview round not found")

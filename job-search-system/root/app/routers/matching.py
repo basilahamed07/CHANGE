@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/matching")
@@ -18,7 +19,7 @@ router = APIRouter(prefix="/api/matching")
 async def matching_status(request: Request):
     """Engine status: profile sizes, weights, provider, preferences."""
     from app.matching_service import build_hybrid_matcher_async
-    db = request.app.state.db
+    db = _db(request)
     matcher, meta = await build_hybrid_matcher_async(request.app.state, db)
     prefs = await db.get_hybrid_prefs()
     scored_rows = await db.db.execute(
@@ -32,7 +33,7 @@ async def matching_status(request: Request):
 async def score_one(request: Request, job_id: int, persist: bool = True):
     """Score a single job with the hybrid engine. Deterministic, instant, free."""
     from app.matching_service import build_hybrid_matcher_async
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -64,14 +65,17 @@ async def score_all(request: Request):
     Free + fast (no AI). Safe to run any time; skips already-scored jobs.
     """
     from app.matching_service import score_all_unscored
-    result = await score_all_unscored(request.app.state, request.app.state.db)
+    ai = await request.app.state.ai_state_for(request)
+    fake_state = type("_PerUserAIState", (), {})()
+    fake_state.matcher = ai["matcher"]
+    result = await score_all_unscored(fake_state, _db(request))
     return result
 
 
 @router.get("/jobs/{job_id}/explain")
 async def explain(request: Request, job_id: int):
     """Human-readable breakdown of the stored hybrid score for a job."""
-    db = request.app.state.db
+    db = _db(request)
     score = await db.get_score(job_id)
     if not score:
         raise HTTPException(404, "No score for this job yet — POST /api/matching/jobs/{id}/score first")
@@ -91,7 +95,7 @@ async def explain(request: Request, job_id: int):
 
 @router.get("/config")
 async def get_config(request: Request):
-    db = request.app.state.db
+    db = _db(request)
     return {"weights": await db.get_hybrid_weights(),
             "prefs": await db.get_hybrid_prefs()}
 
@@ -100,7 +104,7 @@ async def get_config(request: Request):
 async def put_config(request: Request):
     """Update weights/prefs. Body: {weights?, prefers_remote?, requires_sponsorship?}"""
     from app.hybrid_matcher import _validated_weights
-    db = request.app.state.db
+    db = _db(request)
     body = await request.json()
     weights = body.get("weights")
     if weights is not None:
@@ -122,7 +126,7 @@ async def put_config(request: Request):
 async def top_jobs(request: Request, limit: int = 10, min_score: int = 60):
     """Highest-scoring eligible jobs with component breakdowns."""
     limit = max(1, min(limit, 100))
-    db = request.app.state.db
+    db = _db(request)
     cur = await db.db.execute(
         """SELECT j.id, j.title, j.company, j.location, j.url,
                   js.match_score, js.component_scores, js.hard_blockers

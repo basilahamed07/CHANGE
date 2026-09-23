@@ -5,6 +5,7 @@ import re
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +14,12 @@ router = APIRouter(prefix="/api")
 
 @router.get("/stats")
 async def get_stats(request: Request):
-    return await request.app.state.db.get_stats()
+    return await _db(request).get_stats()
 
 
 @router.get("/analytics")
 async def get_analytics(request: Request):
-    return await request.app.state.db.get_analytics()
+    return await _db(request).get_analytics()
 
 
 def _flatten_user_skills(user_skills: list[dict]) -> set[str]:
@@ -62,7 +63,7 @@ def _filter_keywords(top_keywords: list, user_skills_lower: set) -> list:
 
 @router.get("/skill-gaps")
 async def get_skill_gaps(request: Request):
-    db = request.app.state.db
+    db = _db(request)
     gap_data = await db.get_skill_gap_data(min_score=50, max_score=80)
     user_skills = await db.get_skills()
     flat_skills = _flatten_user_skills(user_skills)
@@ -79,7 +80,7 @@ async def get_skill_gaps(request: Request):
 @router.post("/skill-gaps/analyze")
 async def analyze_skill_gaps(request: Request):
     from app.ai_client import parse_json_response
-    db = request.app.state.db
+    db = _db(request)
     client = getattr(request.app.state, "ai_client", None)
     if not client:
         raise HTTPException(503, "No AI provider configured. Go to Settings → AI to set one up.")
@@ -140,7 +141,7 @@ async def predict_success(request: Request, job_id: int):
     client = getattr(request.app.state, "ai_client", None)
     if not client:
         raise HTTPException(503, "No AI provider configured. Go to Settings → AI to set one up.")
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -170,7 +171,7 @@ async def analyze_career(request: Request):
     client = getattr(request.app.state, "ai_client", None)
     if not client:
         raise HTTPException(503, "No AI provider configured. Go to Settings → AI to set one up.")
-    db = request.app.state.db
+    db = _db(request)
     profile = await db.get_full_profile()
     work = profile.get("work_history", [])
     skills_list = profile.get("skills", [])
@@ -191,7 +192,7 @@ async def analyze_career(request: Request):
 async def get_career_suggestions(request: Request):
     if not getattr(request.app.state.settings, "enable_career_advisor", False):
         raise HTTPException(404, "Career advisor disabled (feature flag)")
-    suggestions = await request.app.state.db.get_career_suggestions()
+    suggestions = await _db(request).get_career_suggestions()
     return {"suggestions": suggestions}
 
 
@@ -199,7 +200,7 @@ async def get_career_suggestions(request: Request):
 async def accept_career_suggestion(request: Request, suggestion_id: int):
     if not getattr(request.app.state.settings, "enable_career_advisor", False):
         raise HTTPException(404, "Career advisor disabled (feature flag)")
-    db = request.app.state.db
+    db = _db(request)
     suggestion = await db.accept_career_suggestion(suggestion_id)
     if not suggestion:
         raise HTTPException(404, "Suggestion not found")
@@ -219,7 +220,7 @@ async def export_csv(
     min_score: int | None = Query(None),
     status: str | None = Query(None),
 ):
-    db = request.app.state.db
+    db = _db(request)
     jobs = await db.list_jobs(sort_by="score", limit=10000)
 
     # Prefetch all sources and applications to avoid N+1
@@ -270,7 +271,7 @@ async def export_csv(
 async def list_offers(request: Request):
     if not getattr(request.app.state.settings, "enable_salary_tools", False):
         raise HTTPException(404, "Offer tools disabled (feature flag)")
-    offers = await request.app.state.db.get_offers()
+    offers = await _db(request).get_offers()
     return {"offers": offers}
 
 
@@ -279,7 +280,7 @@ async def compare_offers(request: Request):
     if not getattr(request.app.state.settings, "enable_salary_tools", False):
         raise HTTPException(404, "Offer tools disabled (feature flag)")
     from app.offer_calculator import compare_offers as _compare
-    offers = await request.app.state.db.get_offers()
+    offers = await _db(request).get_offers()
     comparison = _compare(offers)
     return {"comparison": comparison}
 
@@ -294,7 +295,7 @@ async def create_offer(request: Request):
                  "health_value", "retirement_match", "relocation", "location", "notes"):
         if key in body:
             fields[key] = body[key]
-    db = request.app.state.db
+    db = _db(request)
     offer_id = await db.create_offer(**fields)
     offer = await db.get_offer(offer_id)
     return {"ok": True, "offer": offer}
@@ -312,7 +313,7 @@ async def update_offer(request: Request, offer_id: int):
             fields[key] = body[key]
     if not fields:
         raise HTTPException(400, "No fields to update")
-    db = request.app.state.db
+    db = _db(request)
     updated = await db.update_offer(offer_id, **fields)
     if not updated:
         raise HTTPException(404, "Offer not found")
@@ -324,7 +325,7 @@ async def update_offer(request: Request, offer_id: int):
 async def delete_offer(request: Request, offer_id: int):
     if not getattr(request.app.state.settings, "enable_salary_tools", False):
         raise HTTPException(404, "Offer tools disabled (feature flag)")
-    deleted = await request.app.state.db.delete_offer(offer_id)
+    deleted = await _db(request).delete_offer(offer_id)
     if not deleted:
         raise HTTPException(404, "Offer not found")
     return {"ok": True}
@@ -337,13 +338,13 @@ async def get_digest(
     hours: int = Query(24),
 ):
     from app.digest import generate_digest
-    return await generate_digest(request.app.state.db, min_score, hours)
+    return await generate_digest(_db(request), min_score, hours)
 
 
 @router.post("/digest/send-test")
 async def send_digest_test(request: Request):
     from app.digest import send_digest
-    success = await send_digest(request.app.state.db)
+    success = await send_digest(_db(request))
     if not success:
         raise HTTPException(400, "Digest not sent — check email settings and digest configuration")
     return {"ok": True, "message": "Digest sent"}

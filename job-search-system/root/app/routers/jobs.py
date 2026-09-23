@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 
 from app.enrichment import enrich_job_description
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ async def list_jobs(
     posted_within: str | None = Query(None),
     include_stale: bool = Query(False),
 ):
-    db = request.app.state.db
+    db = _db(request)
     config = await db.get_search_config()
     exclude_terms = config.get("exclude_terms", []) if config else []
     try:
@@ -54,7 +55,7 @@ async def list_jobs(
 
 @router.post("/jobs/save-external")
 async def save_external_job(request: Request):
-    db = request.app.state.db
+    db = _db(request)
     body = await request.json()
     title = body.get("title", "").strip()
     company = body.get("company", "").strip()
@@ -117,7 +118,7 @@ async def save_external_job(request: Request):
 
 @router.get("/jobs/lookup")
 async def lookup_job_by_url(request: Request, url: str = Query(...)):
-    db = request.app.state.db
+    db = _db(request)
     job = await db.find_job_by_url(url)
     if not job:
         return {"found": False}
@@ -135,7 +136,7 @@ async def lookup_job_by_url(request: Request, url: str = Query(...)):
 
 @router.get("/jobs/{job_id}")
 async def get_job(request: Request, job_id: int):
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -154,7 +155,7 @@ async def get_job(request: Request, job_id: int):
 
 @router.get("/jobs/{job_id}/similar")
 async def get_similar_jobs(request: Request, job_id: int):
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -167,7 +168,7 @@ async def get_similar_jobs(request: Request, job_id: int):
 
 @router.post("/jobs/{job_id}/dismiss")
 async def dismiss_job(request: Request, job_id: int):
-    await request.app.state.db.dismiss_job(job_id)
+    await _db(request).dismiss_job(job_id)
     return {"ok": True}
 
 
@@ -176,7 +177,7 @@ async def estimate_salary_endpoint(request: Request, job_id: int):
     if not getattr(request.app.state.settings, "enable_salary_tools", False):
         raise HTTPException(404, "Salary tools disabled (feature flag)")
     from app.salary_estimator import estimate_salary
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -199,7 +200,7 @@ async def estimate_salary_endpoint(request: Request, job_id: int):
 @router.post("/jobs/{job_id}/find-apply-link")
 async def find_apply_link(request: Request, job_id: int):
     from app.apply_link_finder import find_apply_url
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -212,7 +213,7 @@ async def find_apply_link(request: Request, job_id: int):
 @router.post("/jobs/{job_id}/find-contact")
 async def find_contact(request: Request, job_id: int):
     from app.contact_finder import find_hiring_contact
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -234,7 +235,7 @@ async def find_contact(request: Request, job_id: int):
 
 @router.post("/jobs/{job_id}/events")
 async def add_event(request: Request, job_id: int):
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -256,7 +257,7 @@ async def mark_applied_by_url(request: Request):
     url = body.get("url", "").strip()
     if not url:
         raise HTTPException(400, "url is required")
-    db = request.app.state.db
+    db = _db(request)
     job = await db.find_job_by_url(url)
     if not job:
         return {"found": False, "message": "Job not tracked"}
@@ -268,7 +269,7 @@ async def mark_applied_by_url(request: Request):
 @router.get("/companies/{company_name:path}")
 async def get_company_info(request: Request, company_name: str):
     from app.company_research import research_company
-    db = request.app.state.db
+    db = _db(request)
     cached = await db.get_company(company_name)
     if cached:
         return cached

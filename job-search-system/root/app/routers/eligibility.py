@@ -6,6 +6,7 @@ import json
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/api")
 async def _engine(request: Request):
     """Build the engine from live config (allowed regions from search_config)."""
     from app.eligibility import EligibilityEngine
-    db = request.app.state.db
+    db = _db(request)
     allowed = await db.get_allowed_regions()
     registry = getattr(request.app.state, "country_registry", None)
     floors = {}
@@ -30,7 +31,7 @@ async def _engine(request: Request):
 @router.post("/jobs/{job_id}/eligibility")
 async def check_job_eligibility(request: Request, job_id: int):
     """Run the deterministic eligibility gate on one job — full reason codes."""
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -49,7 +50,7 @@ async def check_job_eligibility(request: Request, job_id: int):
 async def list_eligible_jobs(request: Request, limit: int = 100):
     """Jobs currently eligible for the pipeline (fresh, in-region, complete)."""
     limit = max(1, min(limit, 500))
-    jobs = await request.app.state.db.get_eligible_jobs(limit=limit)
+    jobs = await _db(request).get_eligible_jobs(limit=limit)
     return {"count": len(jobs), "jobs": jobs}
 
 
@@ -57,7 +58,7 @@ async def list_eligible_jobs(request: Request, limit: int = 100):
 async def job_freshness(request: Request, job_id: int):
     """Freshness evidence for a job (recorded at ingest + refreshable)."""
     from app.freshness import assess_freshness
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")

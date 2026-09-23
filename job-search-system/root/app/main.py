@@ -4,7 +4,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from app.database import Database
 from app.ai_client import AIClient
 from app.auth import AuthGuardMiddleware, LoginThrottler, SystemStore
+from app.workspace import WorkspaceManager
+from app.workspace_middleware import WorkspaceMiddleware
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -70,11 +72,12 @@ async def _init_embedding_client(db):
 
 async def lifespan(app: FastAPI):
     db_path = app.state.db_path
+    _data_dir = os.path.dirname(db_path) or "data"
     testing = getattr(app.state, "testing", False)
     from app.config import Settings
     settings = Settings()
     app.state.settings = settings
-    os.makedirs(os.path.dirname(db_path) or "data", exist_ok=True)
+    os.makedirs(_data_dir, exist_ok=True)
     # Stale-state recovery: a crashed previous run must never leave active=true.
     app.state.scrape_progress = None
     app.state.scrape_task = None
@@ -89,6 +92,38 @@ async def lifespan(app: FastAPI):
     # M15a: create users/sessions schema in system.db (idempotent) + close it
     # on shutdown. Workspace DBs arrive in M15b.
     await app.state.auth_store.init()
+
+    # M15b: per-user workspaces. Basil's original single-user data (main DB,
+    # profile/, applications/) becomes the ADMIN workspace on first boot after
+    # this deploy. The default app.state.db then REOPENS from the admin
+    # workspace so background jobs (scheduler/scoring on bg_db) operate on the
+    # admin's pool. Per-request serving resolves each user's workspace below.
+    admin_ws_dir_ready = False
+    try:
+        admin_user = await app.state.auth_store.get_user_by_username("basil")
+        if admin_user is None:
+            users = await app.state.auth_store.list_users()
+            admin_user = users[0] if users else None
+        if admin_user and not app.state.testing:
+            _db_filename = os.path.basename(db_path)
+            moved = await app.state.workspaces.migrate_single_user(
+                _data_dir, admin_user, db_filename=_db_filename)
+            if moved and moved != "nothing to move (already migrated)":
+                logger.info("M15b migration: moved %s into admin workspace", moved)
+            # Point the default DB (and bg_db below) at the ADMIN WORKSPACE copy
+            # — always the canonical filename.
+            _admin_ws_dir = app.state.workspaces.workspace_dir(
+                admin_user["id"], admin_user["username"])
+            _admin_db = os.path.join(_admin_ws_dir, "jobagent.db")
+            if os.path.exists(_admin_db) and os.path.abspath(_admin_db) != os.path.abspath(db_path):
+                await app.state.db.close()
+                db_path = _admin_db
+                app.state.db = Database(db_path)
+                await app.state.db.init()
+                app.state.db_path = db_path
+        admin_ws_dir_ready = admin_user is not None
+    except Exception:
+        logger.exception("M15b workspace migration skipped (will retry next boot)")
 
     # Separate DB connection for background tasks (scoring, scraping, enrichment)
     # so they don't block API request handling on the main connection.
@@ -154,10 +189,26 @@ async def lifespan(app: FastAPI):
 
         # M2: candidate evidence store + hard gate (loaded from YAML, mirrored to DB).
         # Generation refuses to run without it (fail-closed).
+        # M15b: the DEFAULT store points at the ADMIN workspace profile dir
+        # (settings.profile_dir still seeds NEW users' templates). Authenticated
+        # requests get their own store via _evidence_store_for().
         from app.evidence_store import EvidenceStore
         from app.evidence_checker import EvidenceChecker
         try:
-            store = EvidenceStore(profile_dir=settings.profile_dir)
+            _admin_profile_dir = settings.profile_dir
+            if admin_ws_dir_ready:
+                try:
+                    _au = await app.state.auth_store.get_user_by_username("basil") \
+                        or (await app.state.auth_store.list_users() or [None])[0]
+                    if _au:
+                        _cand = os.path.join(
+                            app.state.workspaces.workspace_dir(_au["id"], _au["username"]),
+                            "profile")
+                        if os.path.isdir(_cand):
+                            _admin_profile_dir = _cand
+                except Exception:
+                    logger.exception("admin workspace profile resolution failed")
+            store = EvidenceStore(profile_dir=_admin_profile_dir)
             app.state.evidence_store = store
             app.state.evidence_checker = EvidenceChecker(store.verified_values())
             synced = await store.sync_to_db(app.state.db)
@@ -319,6 +370,23 @@ async def lifespan(app: FastAPI):
         await bg_db.close()
     await app.state.db.close()
     await app.state.auth_store.close()
+    await app.state.workspaces.close_all()
+
+
+def _db(request: Request) -> Database:
+    """M15b: the requesting user's database.
+
+    Every router calls this instead of touching request.app.state.db directly.
+    When a workspace is bound (real authenticated traffic) it returns the
+    USER's DB; otherwise (unauthenticated callers like the auth router, or
+    testing bypass) it falls back to the app-wide default DB. This keeps all
+    247 existing `request.app.state.db` call sites working while making each
+    authenticated request operate on the user's own data.
+    """
+    ws = getattr(request.state, "workspace", None)
+    if ws is not None:
+        return ws.db
+    return request.app.state.db
 
 
 def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
@@ -334,9 +402,14 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
     # when testing=True (800+ pre-auth tests + E2E harness unchanged);
     # test_auth.py exercises the REAL guard with testing=False.
     from pathlib import Path as _Path
+    _data_dir = str(_Path(db_path).parent)
     _system_db = str(_Path(db_path).parent / "system.db")
     app.state.auth_store = SystemStore(_system_db)
     app.state.login_throttler = LoginThrottler()
+    # M15b: per-user workspaces live under data/users/.
+    app.state.workspaces = WorkspaceManager(os.path.join(_data_dir, "users"))
+    # Auth guard FIRST (sets request.state.user), then workspace binding.
+    app.add_middleware(WorkspaceMiddleware, workspace_manager=app.state.workspaces)
     app.add_middleware(AuthGuardMiddleware, store=app.state.auth_store,
                        throttler=app.state.login_throttler)
 
@@ -479,6 +552,65 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
     app.state.score_unscored = _score_unscored
     app.state.reinit_ai_services = _reinit_ai_services
     app.state.save_parsed_profile = _save_parsed_profile
+
+    # M15b: per-user AI state. Each user's matcher/tailor/evidence are rebuilt
+    # lazily from THEIR workspace (evidence dir + their ai_settings row + their
+    # resume text). The app.state defaults are the admin's (bootstrap safety).
+    _user_ai_cache: dict[int, dict] = {}
+
+    async def _ai_state_for(request: Request) -> dict:
+        ws = getattr(request.state, "workspace", None)
+        if ws is None:
+            # No workspace (unauthenticated/testing paths): app-level defaults.
+            # getattr — test apps never run lifespan, so attrs may be unset.
+            return {"matcher": getattr(app.state, "matcher", None),
+                    "tailor": getattr(app.state, "tailor", None),
+                    "ai_client": getattr(app.state, "ai_client", None),
+                    "evidence_store": getattr(app.state, "evidence_store", None),
+                    "evidence_checker": getattr(app.state, "evidence_checker", None)}
+        key = ws.user_id
+        cached = _user_ai_cache.get(key)
+        settings_row = await ws.db.get_ai_settings()
+        config_row = await ws.db.get_search_config()
+        resume_text = (config_row or {}).get("resume_text", "") or ""
+        stamp = ( (settings_row or {}).get("provider", ""),
+                  bool((settings_row or {}).get("api_key", "")),
+                  len(resume_text), (config_row or {}).get("updated_at", "") )
+        if cached and cached.get("stamp") == stamp:
+            return cached
+        from app.main import _build_ai_client
+        client = _build_ai_client(settings_row,
+                                  settings=getattr(app.state, "settings", None))
+        matcher = tailor = None
+        if client and resume_text:
+            from app.matcher import JobMatcher
+            from app.tailoring import Tailor
+            candidate_focus = None
+            if config_row:
+                candidate_focus = {
+                    "job_titles": config_row.get("job_titles", []),
+                    "seniority": config_row.get("seniority", ""),
+                    "summary": config_row.get("summary", ""),
+                    "key_skills": config_row.get("key_skills", []),
+                }
+            matcher = JobMatcher(client, resume_text, candidate_focus=candidate_focus)
+            tailor = Tailor(client, resume_text)
+        evidence_store = None
+        evidence_checker = None
+        try:
+            from app.evidence_store import EvidenceStore
+            from app.evidence_checker import EvidenceChecker
+            evidence_store = EvidenceStore(profile_dir=ws.profile_dir)
+            evidence_checker = EvidenceChecker(evidence_store.verified_values())
+        except Exception:
+            logger.exception("per-user evidence store failed (user %s) — fail-closed", key)
+        state = {"matcher": matcher, "tailor": tailor, "ai_client": client,
+                 "evidence_store": evidence_store, "evidence_checker": evidence_checker,
+                 "stamp": stamp}
+        _user_ai_cache[key] = state
+        return state
+
+    app.state.ai_state_for = _ai_state_for
 
     # --- Register routers ---
     from app.routers import auth as auth_router

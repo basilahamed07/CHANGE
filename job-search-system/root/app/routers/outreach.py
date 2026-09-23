@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/outreach")
@@ -19,11 +20,12 @@ router = APIRouter(prefix="/api/outreach")
 
 def _service(request: Request):
     from app.outreach import GmailProvider, OutreachService, load_sequences
-    settings_dir = request.app.state.db_path.rsplit("/", 1)[0] if "/" in getattr(
-        request.app.state, "db_path", "") else "."
+    ws = getattr(request.state, "workspace", None)
+    settings_dir = ws.dir if ws else (request.app.state.db_path.rsplit("/", 1)[0] if "/" in getattr(
+        request.app.state, "db_path", "") else ".")
     sequences, limits, identity = load_sequences()
     gmail = GmailProvider()
-    return OutreachService(request.app.state.db, sequences, limits, identity, gmail)
+    return OutreachService(_db(request), sequences, limits, identity, gmail)
 
 
 @router.post("/jobs/{job_id}/create")
@@ -65,7 +67,7 @@ async def create_followup(request: Request, job_id: int):
 
 @router.get("/jobs/{job_id}")
 async def job_outreach(request: Request, job_id: int):
-    rows = await request.app.state.db.list_outreach(500)
+    rows = await _db(request).list_outreach(500)
     return {"count": len([r for r in rows if r["job_id"] == job_id]),
             "messages": [r for r in rows if r["job_id"] == job_id]}
 

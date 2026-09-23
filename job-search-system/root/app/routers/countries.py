@@ -14,6 +14,7 @@ from pathlib import Path
 
 import yaml
 from fastapi import APIRouter, HTTPException, Request
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -93,7 +94,7 @@ async def apply_strategy(request: Request):
     reg = _registry(request)
     from app.scheduler import apply_country_strategy
     try:
-        stats = await apply_country_strategy(request.app.state.db, reg)
+        stats = await apply_country_strategy(_db(request), reg)
     except Exception as e:
         raise HTTPException(500, f"Strategy apply failed: {e}")
     return {"ok": True, **stats}

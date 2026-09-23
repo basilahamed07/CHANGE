@@ -1,0 +1,25 @@
+# Achievements — one quantified bullet per entry. THE anti-fabrication anchor:
+# every number in a generated resume must appear in one of these lines (or other
+# VERIFIED evidence). If you can't prove a number, don't write it.
+
+claims:
+  - id: achievement_1
+    value: ""
+    status: UNVERIFIED
+    source: ""
+    notes: "Example shape: 'Reduced document ingestion time from 20 min to 3 min for 10k+ docs by parallelizing chunking'"
+
+  - id: achievement_2
+    value: ""
+    status: UNVERIFIED
+    source: ""
+
+  - id: achievement_3
+    value: ""
+    status: UNVERIFIED
+    source: ""
+
+  - id: achievement_4
+    value: ""
+    status: UNVERIFIED
+    source: ""

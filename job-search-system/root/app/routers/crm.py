@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from app.main import _db  # M15b: per-user workspace DB
 from app.crm import (
     ALL_STATUSES,
     FOLLOW_UP_STOP_STATUSES,
@@ -34,7 +35,7 @@ async def transition_status(request: Request, job_id: int,
                             to_status: str = Query(...),
                             notes: str = Query("")):
     """Validated status transition with append-only event history."""
-    db = request.app.state.db
+    db = _db(request)
     app_row = await db.get_application(job_id)
     from_status = (app_row or {}).get("status", "interested")
 
@@ -85,7 +86,7 @@ async def list_statuses():
 @router.post("/crm/followups/run")
 async def run_followup_engine(request: Request):
     """Follow-up engine: due follow-ups computed deterministically per status."""
-    db = request.app.state.db
+    db = _db(request)
     apps = await db.get_all_applications()
     due, stopped = [], 0
     for a in apps:
@@ -121,7 +122,7 @@ async def bulk_status(request: Request, to_status: str = Query(...),
         # Explicit human confirmation still required per item; the endpoint
         # validates each transition and reports failures individually.
         pass
-    db = request.app.state.db
+    db = _db(request)
     results = []
     for raw in job_ids.split(","):
         try:
@@ -147,7 +148,7 @@ async def bulk_status(request: Request, to_status: str = Query(...),
 
 @router.get("/daily-run/today")
 async def daily_run_today(request: Request):
-    db = request.app.state.db
+    db = _db(request)
     today = _now().strftime("%Y-%m-%d")
     state = await db.get_daily_run_state(today)
     packages = await db.count_packages_created_on(today)
@@ -167,7 +168,7 @@ async def daily_run_trigger(request: Request):
     DRAFT-ONLY. Never sends.
     """
     from app.daily_run import DailyRun
-    db = request.app.state.db
+    db = _db(request)
     runner = DailyRun(db)
     # Minimal stage set for the API path: compute what's computable now.
     # Discovery/scoring remain on the scheduler cycle; this closes the loop
@@ -217,7 +218,7 @@ async def monitoring(request: Request, days: int = Query(30, ge=1, le=365)):
     from app import ai_usage
     from datetime import timedelta
 
-    db = request.app.state.db
+    db = _db(request)
     since = (_now() - timedelta(days=days)).isoformat()
     rows = await db.get_ai_usage_rows(since=since)
     summary = ai_usage.summarize(rows)
@@ -260,7 +261,7 @@ async def monitoring(request: Request, days: int = Query(30, ge=1, le=365)):
 async def feedback_recommendations(request: Request):
     """Feedback loop — recommendations for HUMAN review, never auto-rewrite."""
     from app.response_monitor import recommend
-    db = request.app.state.db
+    db = _db(request)
     analytics = await db.get_analytics()
     recs = recommend(weights={}, funnel=analytics.get("funnel", {}),
                      sources=analytics.get("sources", []))

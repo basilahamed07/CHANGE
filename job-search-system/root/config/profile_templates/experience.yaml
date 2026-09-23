@@ -1,0 +1,21 @@
+# Work experience. One entry per ROLE; value = the strongest evidence line for
+# that role (role @ company + dates + scope). Bullets live in achievements.yaml.
+# STATUS: VERIFIED only when dates + employer are documented (offer letter,
+# contract, LinkedIn history, payslip).
+
+claims:
+  - id: role_1
+    value: ""
+    status: UNVERIFIED
+    source: ""
+    notes: "Format: 'AI Engineer at Company (2023-2025) — built X for Y'"
+
+  - id: role_2
+    value: ""
+    status: UNVERIFIED
+    source: ""
+
+  - id: role_3
+    value: ""
+    status: UNVERIFIED
+    source: ""

@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 
 from app.database import Database
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 
@@ -14,21 +15,21 @@ router = APIRouter(prefix="/api")
 async def get_calendar_events(request: Request,
                                start: str = Query(...),
                                end: str = Query(...)):
-    db: Database = request.app.state.db
+    db: Database = _db(request)
     events = await db.get_calendar_events(start, end)
     return {"events": events}
 
 
 @router.get("/calendar/token")
 async def get_ical_token(request: Request):
-    db: Database = request.app.state.db
+    db: Database = _db(request)
     token = await db.get_or_create_ical_token()
     return {"token": token}
 
 
 @router.post("/calendar/token/regenerate")
 async def regenerate_ical_token(request: Request):
-    db: Database = request.app.state.db
+    db: Database = _db(request)
     token = await db.regenerate_ical_token()
     return {"token": token}
 
@@ -101,7 +102,7 @@ def _build_ical(events: list[dict]) -> str:
 async def ical_feed(request: Request, token: str = Query(None)):
     if not token:
         raise HTTPException(401, "Token required")
-    db: Database = request.app.state.db
+    db: Database = _db(request)
     if not await db.validate_ical_token(token):
         raise HTTPException(401, "Invalid token")
 

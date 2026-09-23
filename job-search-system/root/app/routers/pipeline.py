@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ async def _create_follow_up_reminder(db, job_id: int, days: int = 7):
 
 @router.post("/jobs/{job_id}/apply")
 async def apply_to_job(request: Request, job_id: int):
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -33,7 +34,7 @@ async def apply_to_job(request: Request, job_id: int):
 
 @router.post("/jobs/{job_id}/application")
 async def update_application(request: Request, job_id: int, status: str = Query(...), notes: str = Query("")):
-    db = request.app.state.db
+    db = _db(request)
     app_row = await db.get_application(job_id)
     if not app_row:
         await db.insert_application(job_id, status)
@@ -56,7 +57,7 @@ async def record_job_response(request: Request, job_id: int):
     valid_types = ("interview_invite", "rejection", "ghosted", "callback")
     if response_type not in valid_types:
         raise HTTPException(400, f"response_type must be one of: {', '.join(valid_types)}")
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -69,25 +70,25 @@ async def record_job_response(request: Request, job_id: int):
 
 @router.get("/analytics/response-rates")
 async def get_response_rates(request: Request):
-    return await request.app.state.db.get_response_analytics()
+    return await _db(request).get_response_analytics()
 
 
 @router.get("/pipeline")
 async def get_pipeline(request: Request):
-    stats = await request.app.state.db.get_pipeline_stats()
+    stats = await _db(request).get_pipeline_stats()
     return {"stats": stats}
 
 
 @router.get("/pipeline/{status}")
 async def get_pipeline_jobs(request: Request, status: str):
-    jobs = await request.app.state.db.get_pipeline_jobs(status)
+    jobs = await _db(request).get_pipeline_jobs(status)
     return {"jobs": jobs, "count": len(jobs)}
 
 
 @router.post("/jobs/{job_id}/email")
 async def draft_email(request: Request, job_id: int):
     from app.emailer import draft_application_email
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -111,7 +112,7 @@ async def draft_email(request: Request, job_id: int):
 @router.post("/jobs/{job_id}/send-email")
 async def send_job_email(request: Request, job_id: int):
     from app.emailer import send_application_email
-    db = request.app.state.db
+    db = _db(request)
     email_settings = await db.get_email_settings()
     if not email_settings or not email_settings.get("smtp_host"):
         raise HTTPException(400, "SMTP not configured")
@@ -128,19 +129,19 @@ async def send_job_email(request: Request, job_id: int):
 
 @router.get("/reminders")
 async def get_reminders(request: Request, status: str = Query(None)):
-    reminders = await request.app.state.db.get_reminders(status=status, include_job=True)
+    reminders = await _db(request).get_reminders(status=status, include_job=True)
     return {"reminders": reminders}
 
 
 @router.get("/reminders/due")
 async def get_due_reminders(request: Request):
-    due = await request.app.state.db.get_due_reminders()
+    due = await _db(request).get_due_reminders()
     return {"reminders": due}
 
 
 @router.post("/jobs/{job_id}/reminders")
 async def create_reminder(request: Request, job_id: int):
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -155,19 +156,19 @@ async def create_reminder(request: Request, job_id: int):
 
 @router.post("/reminders/{reminder_id}/complete")
 async def complete_reminder(request: Request, reminder_id: int):
-    await request.app.state.db.complete_reminder(reminder_id)
+    await _db(request).complete_reminder(reminder_id)
     return {"ok": True}
 
 
 @router.post("/reminders/{reminder_id}/dismiss")
 async def dismiss_reminder(request: Request, reminder_id: int):
-    await request.app.state.db.dismiss_reminder(reminder_id)
+    await _db(request).dismiss_reminder(reminder_id)
     return {"ok": True}
 
 
 @router.get("/follow-up-templates")
 async def list_follow_up_templates(request: Request):
-    templates = await request.app.state.db.get_follow_up_templates()
+    templates = await _db(request).get_follow_up_templates()
     return {"templates": templates}
 
 
@@ -177,7 +178,7 @@ async def create_follow_up_template(request: Request):
     name = body.get("name", "").strip()
     if not name:
         raise HTTPException(400, "Template name is required")
-    db = request.app.state.db
+    db = _db(request)
     template_id = await db.create_follow_up_template(
         name=name, days_after=body.get("days_after", 7),
         template_text=body.get("template_text", ""),
@@ -196,7 +197,7 @@ async def update_follow_up_template(request: Request, template_id: int):
             fields[key] = body[key]
     if not fields:
         raise HTTPException(400, "No fields to update")
-    db = request.app.state.db
+    db = _db(request)
     updated = await db.update_follow_up_template(template_id, **fields)
     if not updated:
         raise HTTPException(404, "Template not found")
@@ -206,7 +207,7 @@ async def update_follow_up_template(request: Request, template_id: int):
 
 @router.delete("/follow-up-templates/{template_id}")
 async def delete_follow_up_template(request: Request, template_id: int):
-    deleted = await request.app.state.db.delete_follow_up_template(template_id)
+    deleted = await _db(request).delete_follow_up_template(template_id)
     if not deleted:
         raise HTTPException(404, "Template not found")
     return {"ok": True}

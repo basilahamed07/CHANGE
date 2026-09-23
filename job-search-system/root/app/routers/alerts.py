@@ -3,13 +3,14 @@ import json
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from app.main import _db  # M15b: per-user workspace DB
 
 router = APIRouter(prefix="/api")
 
 
 @router.get("/alerts")
 async def list_alerts(request: Request):
-    alerts = await request.app.state.db.get_job_alerts()
+    alerts = await _db(request).get_job_alerts()
     return {"alerts": alerts}
 
 
@@ -19,7 +20,7 @@ async def create_alert(request: Request):
     name = body.get("name", "").strip()
     if not name:
         raise HTTPException(400, "Alert name is required")
-    db = request.app.state.db
+    db = _db(request)
     alert_id = await db.create_job_alert(
         name=name,
         filters=body.get("filters", {}),
@@ -39,16 +40,16 @@ async def update_alert(request: Request, alert_id: int):
             fields[key] = body[key]
     if not fields:
         raise HTTPException(400, "No fields to update")
-    updated = await request.app.state.db.update_job_alert(alert_id, **fields)
+    updated = await _db(request).update_job_alert(alert_id, **fields)
     if not updated:
         raise HTTPException(404, "Alert not found")
-    alert = await request.app.state.db.get_job_alert(alert_id)
+    alert = await _db(request).get_job_alert(alert_id)
     return {"ok": True, "alert": alert}
 
 
 @router.delete("/alerts/{alert_id}")
 async def delete_alert(request: Request, alert_id: int):
-    deleted = await request.app.state.db.delete_job_alert(alert_id)
+    deleted = await _db(request).delete_job_alert(alert_id)
     if not deleted:
         raise HTTPException(404, "Alert not found")
     return {"ok": True}
@@ -58,7 +59,7 @@ async def delete_alert(request: Request, alert_id: int):
 
 @router.get("/notifications")
 async def get_notifications(request: Request, unread: bool = Query(False)):
-    db = request.app.state.db
+    db = _db(request)
     notifications = await db.get_notifications(unread_only=unread)
     count = await db.get_unread_notification_count()
     return {"notifications": notifications, "unread_count": count}
@@ -66,13 +67,13 @@ async def get_notifications(request: Request, unread: bool = Query(False)):
 
 @router.post("/notifications/{notification_id}/read")
 async def mark_notification_read(request: Request, notification_id: int):
-    await request.app.state.db.mark_notification_read(notification_id)
+    await _db(request).mark_notification_read(notification_id)
     return {"ok": True}
 
 
 @router.post("/notifications/read-all")
 async def mark_all_read(request: Request):
-    await request.app.state.db.mark_all_notifications_read()
+    await _db(request).mark_all_notifications_read()
     return {"ok": True}
 
 

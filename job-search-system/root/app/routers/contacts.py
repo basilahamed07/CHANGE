@@ -1,13 +1,14 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
+from app.main import _db  # M15b: per-user workspace DB
 
 router = APIRouter(prefix="/api")
 
 
 @router.get("/contacts")
 async def list_contacts(request: Request):
-    contacts = await request.app.state.db.get_contacts()
+    contacts = await _db(request).get_contacts()
     return {"contacts": contacts}
 
 
@@ -21,7 +22,7 @@ async def create_contact(request: Request):
     for key in ("email", "phone", "company", "role", "linkedin_url", "notes"):
         if key in body:
             fields[key] = body[key]
-    db = request.app.state.db
+    db = _db(request)
     contact_id = await db.create_contact(name, **fields)
     contact = await db.get_contact(contact_id)
     return {"ok": True, "contact": contact}
@@ -36,7 +37,7 @@ async def update_contact(request: Request, contact_id: int):
             fields[key] = body[key]
     if not fields:
         raise HTTPException(400, "No fields to update")
-    db = request.app.state.db
+    db = _db(request)
     updated = await db.update_contact(contact_id, **fields)
     if not updated:
         raise HTTPException(404, "Contact not found")
@@ -46,7 +47,7 @@ async def update_contact(request: Request, contact_id: int):
 
 @router.delete("/contacts/{contact_id}")
 async def delete_contact(request: Request, contact_id: int):
-    deleted = await request.app.state.db.delete_contact(contact_id)
+    deleted = await _db(request).delete_contact(contact_id)
     if not deleted:
         raise HTTPException(404, "Contact not found")
     return {"ok": True}
@@ -54,7 +55,7 @@ async def delete_contact(request: Request, contact_id: int):
 
 @router.get("/contacts/{contact_id}/interactions")
 async def get_contact_interactions(request: Request, contact_id: int):
-    db = request.app.state.db
+    db = _db(request)
     contact = await db.get_contact(contact_id)
     if not contact:
         raise HTTPException(404, "Contact not found")
@@ -64,7 +65,7 @@ async def get_contact_interactions(request: Request, contact_id: int):
 
 @router.post("/contacts/{contact_id}/interactions")
 async def add_contact_interaction(request: Request, contact_id: int):
-    db = request.app.state.db
+    db = _db(request)
     contact = await db.get_contact(contact_id)
     if not contact:
         raise HTTPException(404, "Contact not found")
@@ -80,7 +81,7 @@ async def add_contact_interaction(request: Request, contact_id: int):
 
 @router.get("/jobs/{job_id}/contacts")
 async def get_job_contacts(request: Request, job_id: int):
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -94,7 +95,7 @@ async def link_job_contact(request: Request, job_id: int):
     contact_id = body.get("contact_id")
     if not contact_id:
         raise HTTPException(400, "contact_id is required")
-    await request.app.state.db.link_job_contact(
+    await _db(request).link_job_contact(
         job_id, contact_id, relationship=body.get("relationship", "")
     )
     return {"ok": True}
@@ -102,7 +103,7 @@ async def link_job_contact(request: Request, job_id: int):
 
 @router.delete("/jobs/{job_id}/contacts/{contact_id}")
 async def unlink_job_contact(request: Request, job_id: int, contact_id: int):
-    removed = await request.app.state.db.unlink_job_contact(job_id, contact_id)
+    removed = await _db(request).unlink_job_contact(job_id, contact_id)
     if not removed:
         raise HTTPException(404, "Link not found")
     return {"ok": True}

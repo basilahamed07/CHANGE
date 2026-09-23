@@ -1,22 +1,19 @@
 # E2E MODULE TEST REPORT — jobagent website, every module
 
-**Date:** 2026-09-23 16:11 UTC  
+**Date:** 2026-09-23 18:03 UTC  
 **Method:** isolated instance of the real app (fresh DB, real free AI model `poolside/laguna-s-2.1:free`, evidence profile seeded from Basil's actual resume). Every module exercised through its public HTTP API with real flows — real .docx upload, real AI scoring/tailoring/cover-letter/interview-prep, real evidence-gate enforcement.
 
 **AI live-run:** NO — free-tier quota exhausted or unreachable; AI checks recorded as SKIP  
 
-## RESULT: **190/190 checks passed** (180 PASS · 10 SKIP · 0 FAIL)
+## RESULT: **187/187 checks passed** (177 PASS · 10 SKIP · 0 FAIL)
 
 ## All checks by module
 
-### auth — 12/12
+### auth — 9/9
 - ✅ status probe (pre-bootstrap)
-- ✅ fresh instance needs bootstrap — status={'needs_bootstrap': True, 'authenticated': False, 'user': None}
-- ✅ anonymous request to protected API rejected (401)
-- ✅ 401 body asks for authentication — {"detail":"Authentication required"}
-- ✅ browser page request redirects to login (303 → /) — got 303
-- ✅ bootstrap first admin account
-- ✅ bootstrap issues HttpOnly session cookie
+- ✅ admin pre-created before seeding (M15b workspace path)
+- ✅ admin login
+- ✅ session issues HttpOnly cookie
 - ✅ second bootstrap refused (admin locked)
 - ✅ session resolves current user
 - ✅ session user is basil/admin — {"user":{"id":1,"username":"basil","role":"admin"}}
@@ -45,7 +42,7 @@
 ### evidence — 5/5
 - ✅ /api/evidence
 - ✅ claims loaded — {'VERIFIED': 4, 'UNVERIFIED': 1, 'DISPUTED': 0, 'DO_NOT_USE': 1}
-- ✅ verified-backed text PASSES gate — {"ok":true,"failures":[],"warnings":[],"checked_at":"2026-09-23T16:11:10.768770+00:00"}
+- ✅ verified-backed text PASSES gate — {"ok":true,"failures":[],"warnings":[],"checked_at":"2026-09-23T18:03:11.558505+00:00"}
 - ✅ fabricated text BLOCKED by gate — ['fabricated_number', 'unsupported_skill']
 - ✅ reload
 
@@ -182,7 +179,7 @@
 - ✅ /api/matching/status
 - ✅ engine status: verified skills + corpus loaded from evidence — skills=3, corpus=4, rag=RagProvider
 - ✅ default weights normalized (sum=1.0, 6 components) — {'skills': 0.35, 'role': 0.15, 'location': 0.1, 'visa': 0.1, 'recency': 0.1, 'semantic': 0.2}
-- ✅ score-all runs over unscored pool (zero AI cost) — scored=12/12, avg=38.0
+- ✅ score-all runs over unscored pool (zero AI cost) — scored=12/12, avg=53.7
 - ✅ score job: overall + all 6 components returned — overall=74, comps={'skills': 100.0, 'role': 50.0, 'location': 100.0, 'visa': 40.0, 'recency': 85.0, 
 - ✅ AI job: verified skills matched, requirement lists present — matched=0, missing=1
 - ✅ AI job scores high on skills (Python/LangChain/RAG in listing) — skills=100.0
@@ -195,8 +192,8 @@
 - ✅ weights PUT normalized to sum=1.0 — {'skills': 0.5797101449275363, 'role': 0.043478260869565216, 'location': 0.028985507246376812, 'visa
 - ✅ hybrid scores persisted with component breakdowns — hybrid_scored_jobs=14
 - ✅ explain endpoint returns stored component breakdown — overall=74
-- ✅ top-jobs ranked desc with component breakdowns — 14 jobs, top=[74, 53, 49]
-- ✅ AI job ranks above noise job in the pool — ai_idx=0, noise_idx=11
+- ✅ top-jobs ranked desc with component breakdowns — 14 jobs, top=[74, 59, 59]
+- ✅ AI job ranks above noise job in the pool — ai_idx=0, noise_idx=12
 
 ### research — 13/13
 - ✅ /api/research/providers
@@ -214,7 +211,7 @@
 - ✅ second company call within TTL = cache hit — cache_hit=True
 
 ### packages — 8/8
-- ✅ build (refresh) packages stored text through the evidence gate — action=rebuilt, status=200
+- ✅ build (refresh) packages stored text through the evidence gate — action=built, status=200
 - ✅ IDEMPOTENT: identical inputs => action=noop (no rewrite) — action=noop
 - ✅ package row + on-disk metadata with hashes + status — status=ready_for_review, files=4
 - ✅ resume.docx downloads (real OOXML: PK zip header) — 37587 bytes

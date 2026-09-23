@@ -342,7 +342,33 @@
     fallback; SSE probe needed login (fresh client had no cookie);
     test_upload_resume_env_fallback_path_no_crash now logs in (production path =
     guard active).
-- M15b User workspaces — PENDING
+- M15b Per-user workspaces — **DONE 2026-09-23** (E2E-verified + Critical Test #5). Details:
+  - `app/workspace.py` — WorkspaceManager/Workspace: `data/users/{id}-{username}/` with
+    own `jobagent.db` (same 46-table schema, ZERO table changes), `profile/`,
+    `applications/`, `gmail_drafts/`. New users get 8 pristine evidence templates
+    from NEW `config/profile_templates/` (21 claims, all UNVERIFIED — fail-closed).
+  - `app/workspace_middleware.py` — binds each authenticated request to the user's
+    workspace DB (`request.state.db` + `request.state.workspace`).
+  - `main.py#_db(request)` bridges ALL 157 router call sites that previously read
+    `request.app.state.db` → the requesting user's DB (mechanical, zero behavior drift
+    when no workspace is bound). `app.state.ai_state_for(request)` builds per-user
+    matcher/tailor/evidence-store/checker from THEIR ai_settings + resume + profile dir,
+    cached with a stamp and invalidated on settings/resume change.
+  - Migration: pre-multi-user data (main DB + WAL/SHM, `profile/`, `applications/`)
+    moves into the admin workspace (renamed to canonical `jobagent.db`); app.state.db
+    and bg_db reopen on the admin workspace so the scheduler keeps working. Idempotent.
+  - Per-user now: jobs pool, applications/packages, contacts, resumes, search config,
+    AI provider+key, scraper keys, evidence, countries state, CRM, outreach drafts,
+    analytics, daily-run (API path), discovery run.
+  - Verification: **E2E 187/187 PASS, 0 FAIL** (harness pre-creates admin so the
+    workspace migration runs at lifespan); **Critical Test #5 = tests/test_workspaces.py
+    8/8** (jobs/contacts/keys/search-config/resumes/profile/CRM/evidence + distinct
+    workspaces proven with 3 real logged-in clients); 939 backend tests green before
+    the workspace swap + targeted suites re-run green after.
+  - Known limit (M15c): the legacy standalone scheduler/scrape background cycles still
+    run against the ADMIN workspace only; per-user discovery/Run-Discovery-Now is
+    per-user already. Live server runs with migration applied
+    (`data/users/1-basil/` = Basil's real pool).
 - M15c Per-user pipeline features — PENDING
 - M15d Admin panel — PENDING
 - M15e Hardening + migration (Critical Test #5) — PENDING

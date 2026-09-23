@@ -4,6 +4,7 @@ import logging
 import re as _re
 
 from fastapi import APIRouter, HTTPException, Request
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 
@@ -338,7 +339,7 @@ async def analyze_form(request: Request):
     form_fields = body.get("fields", [])
     page_url = body.get("page_url", "")
 
-    profile = await request.app.state.db.get_full_profile()
+    profile = await _db(request).get_full_profile()
 
     deterministic_mappings, remaining_fields = _deterministic_fill(form_fields, profile)
 
@@ -349,7 +350,7 @@ async def analyze_form(request: Request):
     if not client:
         return {"mappings": deterministic_mappings, "error": "No AI provider for remaining fields"}
 
-    custom_qa = await request.app.state.db.get_custom_qa()
+    custom_qa = await _db(request).get_custom_qa()
     trimmed_profile = _trim_profile_for_autofill(profile)
     profile_summary = json.dumps(trimmed_profile, default=str, indent=2)
     qa_summary = json.dumps(custom_qa, default=str) if custom_qa else "[]"

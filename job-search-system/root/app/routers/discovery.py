@@ -6,6 +6,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -21,7 +22,7 @@ async def list_adapters(request: Request):
 async def discovery_health(request: Request):
     """Per-source reachability probe (cheap, parallel)."""
     from app.adapters import ALL_ADAPTERS
-    keys = await request.app.state.db.get_scraper_keys()
+    keys = await _db(request).get_scraper_keys()
 
     async def probe(cls):
         adapter = cls(scraper_keys=keys)
@@ -51,7 +52,8 @@ async def run_discovery(request: Request):
 
     app.state.discovery_running = True
     app.state.discovery_progress = {"completed_passes": 0, "new_jobs": 0}
-    bg_db = getattr(app.state, "bg_db", None) or app.state.db
+    ws = getattr(request.state, "workspace", None)
+    bg_db = ws.db if ws else (getattr(app.state, "bg_db", None) or app.state.db)
 
     async def _run():
         try:

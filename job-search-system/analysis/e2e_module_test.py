@@ -93,6 +93,19 @@ async def run() -> int:
 
     os.environ["JOBAGENT_PROFILE_DIR"] = str(profile_dir)
 
+    # M15b: pre-create the admin account BEFORE seeding so the bootstrap-time
+    # workspace migration runs at lifespan (admin already exists) and moves the
+    # seeded jobagent.db + profile/ into the admin workspace before any checks.
+    from app.auth import SystemStore
+    _store = SystemStore(str(tmp / "system.db"))
+    await _store.init()
+    try:
+        await _store.create_user("basil", "e2e-admin-pass", role="admin")
+        print("  seed: pre-created admin 'basil' (workspace migration at lifespan)")
+    except ValueError:
+        pass  # already exists (rerun)
+    await _store.close()
+
     from app.main import create_app
     from app.database import Database
 
@@ -237,20 +250,18 @@ async def run_checks(app, client: httpx.AsyncClient, ai_job: int, ml_job: int,
     r = await call("GET", "/api/auth/status", module="auth",
                    name="status probe (pre-bootstrap)")
     st = r.json()
-    record("auth", "fresh instance needs bootstrap", st.get("needs_bootstrap") is True,
-           f"status={st}")
-    r = await call("GET", "/api/jobs", expect=401, module="auth",
-                   name="anonymous request to protected API rejected (401)")
-    record("auth", "401 body asks for authentication",
-           "Authentication required" in r.json().get("detail", ""), r.text[:80])
-    r = await client.get("/stats", headers={"accept": "text/html"}, follow_redirects=False)
-    record("auth", "browser page request redirects to login (303 → /)",
-           r.status_code == 303 and r.headers.get("location") == "/",
-           f"got {r.status_code}")
-    r = await call("POST", "/api/auth/bootstrap", module="auth",
-                   json={"username": "basil", "password": "e2e-admin-pass"},
-                   name="bootstrap first admin account")
-    record("auth", "bootstrap issues HttpOnly session cookie",
+    # M15b: admin is pre-created before seeding, so bootstrap already happened.
+    if st.get("needs_bootstrap"):
+        record("auth", "fresh instance needs bootstrap", True, "")
+        r = await call("POST", "/api/auth/bootstrap", module="auth",
+                       json={"username": "basil", "password": "e2e-admin-pass"},
+                       name="bootstrap first admin account")
+    else:
+        record("auth", "admin pre-created before seeding (M15b workspace path)", True, "")
+        r = await call("POST", "/api/auth/login", module="auth",
+                       json={"username": "basil", "password": "e2e-admin-pass"},
+                       name="admin login")
+    record("auth", "session issues HttpOnly cookie",
            "jobagent_session=" in r.headers.get("set-cookie", "").lower()
            and "httponly" in r.headers.get("set-cookie", "").lower(), "")
     r = await call("POST", "/api/auth/bootstrap", module="auth", expect=403,

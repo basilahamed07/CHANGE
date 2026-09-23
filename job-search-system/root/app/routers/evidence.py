@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 
 from app.evidence_checker import EvidenceChecker
+from app.main import _db  # M15b: per-user workspace DB
 
 router = APIRouter(prefix="/api", tags=["evidence"])
 logger = logging.getLogger(__name__)
@@ -11,7 +12,7 @@ STATUSES = ("VERIFIED", "UNVERIFIED", "DISPUTED", "DO_NOT_USE")
 
 
 def _get_store(request: Request):
-    store = getattr(request.app.state, "evidence_store", None)
+    store = getattr(request.state, "_evidence_store", None) or getattr(request.app.state, "evidence_store", None)
     if store is None:
         raise HTTPException(503, "Evidence store not loaded (no profile dir?)")
     return store
@@ -39,7 +40,7 @@ async def reload_evidence(request: Request):
     store = _get_store(request)
     count = store.reload()
     request.app.state.evidence_checker = EvidenceChecker(store.verified_values())
-    synced = await store.sync_to_db(request.app.state.db)
+    synced = await store.sync_to_db(_db(request))
     return {
         "ok": True,
         "claims": count,
@@ -52,7 +53,7 @@ async def reload_evidence(request: Request):
 async def check_text(request: Request):
     """Run the hard gate against arbitrary text (used by UI review + tests)."""
     store = _get_store(request)
-    checker = getattr(request.app.state, "evidence_checker", None)
+    checker = getattr(request.state, "_evidence_checker", None) or getattr(request.app.state, "evidence_checker", None)
     if checker is None:
         raise HTTPException(503, "EvidenceChecker not initialized")
     try:

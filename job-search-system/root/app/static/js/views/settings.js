@@ -35,6 +35,7 @@ function renderSettingsShell(container) {
         { id: 'alerts', label: 'Alerts' },
         { id: 'follow-ups', label: 'Follow-Ups' },
         { id: 'integrations', label: 'AI & Integrations' },
+        { id: 'users', label: 'Users' },
         { id: 'data', label: 'Data Management' },
     ];
 
@@ -76,6 +77,7 @@ function renderActiveTab(shell) {
         case 'alerts': renderTabAlerts(content); break;
         case 'follow-ups': renderTabFollowUps(content); break;
         case 'integrations': renderTabAI(content, d.aiSettings || {}, d.scraperKeys || {}, d.emailSettings || {}, d.embeddingSettings || {}); break;
+        case 'users': renderTabUsers(content); break;
         case 'data': renderTabData(content); break;
     }
 }
@@ -1988,3 +1990,112 @@ function renderTabData(container) {
     });
 }
 
+async function renderTabUsers(content) {
+    content.innerHTML = '<div class="loading-container"><span class="spinner"></span></div>';
+    let users = [];
+    let isAdmin = false;
+    try {
+        const res = await api.request('GET', '/api/auth/users');
+        users = res.users || [];
+        isAdmin = true;
+    } catch (err) {
+        if (String(err.message).includes('admin')) {
+            content.innerHTML = `<div class="empty-state"><div class="empty-state-title">Admin only</div><div class="empty-state-desc">Only the administrator can manage users.</div></div>`;
+            return;
+        }
+        content.innerHTML = `<div class="empty-state"><div class="empty-state-title">Could not load users</div><div class="empty-state-desc">${escapeHtml(err.message)}</div></div>`;
+        return;
+    }
+
+    content.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div>
+                <h2 style="font-size:1.125rem;font-weight:600;margin:0">User Management (M15)</h2>
+                <p style="font-size:0.8125rem;color:var(--text-secondary);margin-top:4px">Users you create can log in with their own credentials. Every user gets their own resume, API key, countries and applications (per-user workspaces).</p>
+            </div>
+            <button class="btn btn-primary btn-sm" id="add-user-btn">+ Add User</button>
+        </div>
+        <div id="add-user-form" style="display:none;margin-bottom:20px"></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+            ${users.map(u => `
+                <div class="card" style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px">
+                    <div>
+                        <div style="font-weight:600">${escapeHtml(u.username)}
+                            <span class="status-badge" style="margin-left:6px;font-size:0.7rem;background:var(--bg-surface-secondary);color:var(--text-tertiary)">${escapeHtml(u.role)}</span>
+                            ${u.is_active
+                                ? '<span class="status-badge status-applied" style="margin-left:4px;font-size:0.7rem">active</span>'
+                                : '<span class="status-badge" style="margin-left:4px;font-size:0.7rem;background:#fef2f2;color:#ef4444">disabled</span>'}
+                        </div>
+                        <div style="font-size:0.75rem;color:var(--text-tertiary);margin-top:2px">
+                            created ${formatDate(u.created_at)}${u.last_login_at ? ` · last login ${formatDate(u.last_login_at)}` : ' · never logged in'}
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-shrink:0">
+                        <button class="btn btn-secondary btn-sm user-reset-btn" data-id="${u.id}" data-name="${escapeHtml(u.username)}">Reset Password</button>
+                        ${u.is_active
+                            ? `<button class="btn btn-danger btn-sm user-disable-btn" data-id="${u.id}" data-name="${escapeHtml(u.username)}">Disable</button>`
+                            : `<button class="btn btn-secondary btn-sm user-enable-btn" data-id="${u.id}">Enable</button>`}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+        <div id="users-action-area"></div>
+    `;
+
+    document.getElementById('add-user-btn').addEventListener('click', () => {
+        const form = document.getElementById('add-user-form');
+        if (form.style.display !== 'none') { form.style.display = 'none'; return; }
+        form.style.display = '';
+        form.innerHTML = `
+            <div class="card" style="padding:20px">
+                <h3 style="font-size:1rem;font-weight:600;margin-bottom:12px">New User</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+                    <div><label style="display:block;font-size:0.8125rem;font-weight:600;color:var(--text-tertiary);margin-bottom:4px">Username *</label>
+                        <input type="text" class="search-input" id="new-user-username" maxlength="64" style="width:100%"></div>
+                    <div><label style="display:block;font-size:0.8125rem;font-weight:600;color:var(--text-tertiary);margin-bottom:4px">Password * (min 8)</label>
+                        <input type="text" class="search-input" id="new-user-password" style="width:100%" placeholder="share this with the user"></div>
+                    <div><label style="display:block;font-size:0.8125rem;font-weight:600;color:var(--text-tertiary);margin-bottom:4px">Role</label>
+                        <select class="filter-select" id="new-user-role" style="width:100%">
+                            <option value="user">user</option>
+                            <option value="admin">admin</option>
+                        </select></div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:14px">
+                    <button class="btn btn-primary btn-sm" id="create-user-save-btn">Create User</button>
+                    <button class="btn btn-secondary btn-sm" id="create-user-cancel-btn">Cancel</button>
+                </div>
+            </div>`;
+        document.getElementById('create-user-cancel-btn').addEventListener('click', () => { form.style.display = 'none'; });
+        document.getElementById('create-user-save-btn').addEventListener('click', async () => {
+            const username = document.getElementById('new-user-username').value.trim();
+            const password = document.getElementById('new-user-password').value;
+            const role = document.getElementById('new-user-role').value;
+            if (!username || password.length < 8) { showToast('Username required, password min 8 chars', 'error'); return; }
+            try {
+                await api.request('POST', '/api/auth/users', { username, password, role });
+                showToast(`User "${username}" created — share the password with them`, 'success');
+                renderTabUsers(content);
+            } catch (err) { showToast(err.message, 'error'); }
+        });
+    });
+
+    content.querySelectorAll('.user-disable-btn').forEach(btn => btn.addEventListener('click', async () => {
+        const ok = await showModal({ title: 'Disable user', message: `Disable "${btn.dataset.name}"? They will be logged out immediately and cannot sign in.`, confirmText: 'Disable', danger: true });
+        if (!ok) return;
+        try { await api.request('POST', `/api/auth/users/${btn.dataset.id}/disable`); showToast('User disabled', 'success'); renderTabUsers(content); }
+        catch (err) { showToast(err.message, 'error'); }
+    }));
+    content.querySelectorAll('.user-enable-btn').forEach(btn => btn.addEventListener('click', async () => {
+        try { await api.request('POST', `/api/auth/users/${btn.dataset.id}/enable`); showToast('User enabled', 'success'); renderTabUsers(content); }
+        catch (err) { showToast(err.message, 'error'); }
+    }));
+    content.querySelectorAll('.user-reset-btn').forEach(btn => btn.addEventListener('click', async () => {
+        const newPassword = prompt(`New password for "${btn.dataset.name}" (min 8 chars):`);
+        if (!newPassword) return;
+        if (newPassword.length < 8) { showToast('Password must be at least 8 characters', 'error'); return; }
+        try {
+            await api.request('POST', `/api/auth/users/${btn.dataset.id}/reset-password`, { new_password: newPassword });
+            showToast(`Password reset — give it to "${btn.dataset.name}"`, 'success');
+        } catch (err) { showToast(err.message, 'error'); }
+    }));
+}

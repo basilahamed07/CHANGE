@@ -14,6 +14,7 @@ import os
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
+from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/packages")
@@ -23,7 +24,8 @@ def _builder(request: Request):
     from app.application_builder import ApplicationBuilder
     from app.config import get_settings
     settings = get_settings()
-    base = os.path.join(os.path.dirname(settings.db_path) or "data", "applications")
+    ws = getattr(request.state, "workspace", None)
+    base = ws.applications_dir if ws else os.path.join(os.path.dirname(settings.db_path) or "data", "applications")
     return ApplicationBuilder(base)
 
 
@@ -36,15 +38,16 @@ def _profile_version(request: Request) -> str:
 async def build_package(request: Request, job_id: int, refresh: bool = False):
     """Evidence-gated package build. refresh=true repackages stored text (no AI)."""
     from app.application_builder import EvidenceViolationError, PackageInputs, sha256_text
-    db = request.app.state.db
+    db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
     app_row = await db.get_application(job_id)
 
-    tailor = getattr(request.app.state, "tailor", None)
-    store = getattr(request.app.state, "evidence_store", None)
-    checker = getattr(request.app.state, "evidence_checker", None)
+    ai = await request.app.state.ai_state_for(request)
+    tailor = ai["tailor"]
+    store = ai["evidence_store"]
+    checker = ai["evidence_checker"]
     if store is None or checker is None:
         raise HTTPException(503, "Evidence store unavailable — packaging blocked (fail-closed)")
 
@@ -129,7 +132,7 @@ async def build_package(request: Request, job_id: int, refresh: bool = False):
 
 @router.get("/jobs/{job_id}")
 async def get_package(request: Request, job_id: int):
-    db = request.app.state.db
+    db = _db(request)
     meta = await db.get_package_meta(job_id)
     if not meta:
         raise HTTPException(404, "No package built for this job")
@@ -142,7 +145,7 @@ async def get_package(request: Request, job_id: int):
 @router.get("")
 @router.get("/")
 async def list_packages(request: Request):
-    db = request.app.state.db
+    db = _db(request)
     rows = await (await db.db.execute(
         """SELECT a.job_id, j.company, j.title, a.package_dir, a.package_status
            FROM applications a JOIN jobs j ON j.id = a.job_id
@@ -155,7 +158,7 @@ async def download_file(request: Request, job_id: int, filename: str):
     if filename not in {"resume.docx", "resume.txt", "cover_letter.docx",
                         "cover_letter.txt", "metadata.json"}:
         raise HTTPException(400, "Unknown package file")
-    db = request.app.state.db
+    db = _db(request)
     meta = await db.get_package_meta(job_id)
     if not meta:
         raise HTTPException(404, "No package built for this job")
