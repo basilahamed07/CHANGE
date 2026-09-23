@@ -715,10 +715,49 @@ async def upload_resume(request: Request, file: UploadFile = File(...)):
     if profile_data:
         await request.app.state.save_parsed_profile(db, profile_data)
 
+    resume_name = (file.filename or "").strip() or "Uploaded resume"
+
+    # ---- Resume-driven autofill -------------------------------------------------
+    # The uploaded resume IS the candidate's source of truth, so we turn its
+    # content into (a) VERIFIED evidence claims and (b) a pre-filled country
+    # strategy. This is what makes a brand-new user productive immediately:
+    # settings + evidence configure themselves from the uploaded resume.
+    evidence_summary: dict = {}
+    countries_seeded: list[str] = []
+    try:
+        from app.evidence_autofill import (extract_claims_from_resume,
+                                           seed_countries_from_resume)
+        ai_state = await request.app.state.ai_state_for(request)
+        store = ai_state.get("evidence_store") or getattr(request.app.state, "evidence_store", None)
+        if store is not None:
+            extracted = extract_claims_from_resume(analysis, profile_data, resume_name)
+            if extracted:
+                source_label = f"uploaded resume: {resume_name}"
+                evidence_summary = store.merge_extracted_claims(extracted, source_label)
+                await store.sync_to_db(db)
+                logger.info("Resume autofill: evidence updated %s", evidence_summary)
+
+        # Pre-fill the country strategy from the resume ONLY when the user has
+        # not chosen any country yet (never overwrite an explicit choice).
+        registry = getattr(request.app.state, "country_registry", None)
+        existing_regions = await db.get_allowed_regions()
+        # A user counts as "not chosen yet" when the list is empty OR still the
+        # legacy single-user default (['US', 'Remote']) — that default is not a
+        # real choice and would leave every new user targeting the US.
+        _unchosen = (not existing_regions) or (
+            {str(r) for r in existing_regions} <= {"US", "Remote"})
+        if registry is not None and _unchosen:
+            seeded = seed_countries_from_resume(resume_text, registry)
+            if seeded:
+                await db.update_allowed_regions(seeded)
+                countries_seeded = seeded
+                logger.info("Resume autofill: countries seeded %s", seeded)
+    except Exception:
+        logger.exception("Resume-driven autofill failed (upload still succeeded)")
+
     # Uploads must appear in the Resumes list (GET /api/resumes) — otherwise the
     # onboarding checklist reports "No resume yet" after a successful upload.
     # Re-uploading the same filename updates the existing entry instead of duplicating.
-    resume_name = (file.filename or "").strip() or "Uploaded resume"
     existing_resumes = await db.get_resumes()
     existing = next((r for r in existing_resumes if r["name"] == resume_name), None)
     if existing:
@@ -757,4 +796,6 @@ async def upload_resume(request: Request, file: UploadFile = File(...)):
         "ats_tips": analysis.get("ats_tips", []),
         "resume_length": len(resume_text),
         "profile_parsed": bool(profile_data),
+        "evidence_autofill": evidence_summary,
+        "countries_seeded": countries_seeded,
     }

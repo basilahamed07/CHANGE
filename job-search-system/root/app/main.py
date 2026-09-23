@@ -573,9 +573,19 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
         settings_row = await ws.db.get_ai_settings()
         config_row = await ws.db.get_search_config()
         resume_text = (config_row or {}).get("resume_text", "") or ""
-        stamp = ( (settings_row or {}).get("provider", ""),
-                  bool((settings_row or {}).get("api_key", "")),
-                  len(resume_text), (config_row or {}).get("updated_at", "") )
+        # Cache stamp: provider/key/resume length/config version + the evidence
+        # profile's file mtimes, so a resume-driven autofill (which rewrites the
+        # YAML files) rebuilds the matcher/checker on the very next request.
+        try:
+            _prof_stamp = tuple(sorted(
+                (f, os.path.getmtime(os.path.join(ws.profile_dir, f)))
+                for f in os.listdir(ws.profile_dir) if f.endswith((".yaml", ".yml"))))
+        except Exception:
+            _prof_stamp = ()
+        stamp = ((settings_row or {}).get("provider", ""),
+                 bool((settings_row or {}).get("api_key", "")),
+                 len(resume_text), (config_row or {}).get("updated_at", ""),
+                 _prof_stamp)
         if cached and cached.get("stamp") == stamp:
             return cached
         from app.main import _build_ai_client

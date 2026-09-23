@@ -15,6 +15,7 @@ Claims with status UNVERIFIED may only be used when the caller explicitly opts i
 
 import logging
 import re
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -148,6 +149,89 @@ class EvidenceStore:
             last_verified=str(entry.get("last_verified", "")),
             notes=str(entry.get("notes", "")),
         )
+
+    # ------------------------------------------------- resume-driven autofill
+    def merge_extracted_claims(self, extracted: dict[str, list[dict]],
+                               source_label: str) -> dict:
+        """Merge claims EXTRACTED FROM THE USER'S OWN RESUME into the profile.
+
+        The uploaded resume IS the source of truth for the candidate, so an
+        extracted skill/role/degree becomes VERIFIED with source=resume.
+        Safety rules (Golden Rule 5):
+          - DISPUTED / DO_NOT_USE claims are NEVER touched or re-added;
+          - an existing UNVERIFIED claim is UPGRADED (resume = proof);
+          - only new values are appended; other claims survive untouched.
+        Writes each affected category YAML (with a .bak backup) then reloads.
+        Returns per-category counts {added, upgraded, skipped}.
+        """
+        root = Path(self.profile_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        today = _now_iso()[:10]
+        summary: dict[str, dict] = {}
+
+        def norm(v: str) -> str:
+            return re.sub(r"[^a-z0-9+]", "", str(v).lower())
+
+        for category, entries in extracted.items():
+            path = root / f"{category}.yaml"
+            data: dict = {}
+            if path.exists():
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        data = yaml.safe_load(fh) or {}
+                except Exception:
+                    logger.exception("autofill: could not parse %s — writing fresh", path)
+                    data = {}
+            if not isinstance(data, dict):
+                data = {}
+            claims = data.get("claims")
+            if not isinstance(claims, list):
+                claims = []
+
+            by_value: dict[str, dict] = {}
+            by_id: dict[str, dict] = {}
+            for c in claims:
+                if isinstance(c, dict):
+                    by_id[str(c.get("id", ""))] = c
+                    by_value[norm(c.get("value", ""))] = c
+
+            added = upgraded = skipped = 0
+            for entry in entries:
+                value = str(entry.get("value", "")).strip()
+                if not value:
+                    continue
+                existing = by_value.get(norm(value)) or by_id.get(str(entry.get("id", "")))
+                if existing is not None:
+                    status = str(existing.get("status", "UNVERIFIED")).strip().upper()
+                    if status in ("DISPUTED", "DO_NOT_USE"):
+                        skipped += 1
+                        continue
+                    existing["status"] = "VERIFIED"
+                    existing["source"] = source_label
+                    existing["last_verified"] = today
+                    upgraded += 1
+                    continue
+                claim = {"id": str(entry.get("id") or f"{category}_{norm(value)[:40]}"),
+                         "value": value, "status": "VERIFIED",
+                         "source": source_label, "last_verified": today}
+                if entry.get("notes"):
+                    claim["notes"] = entry["notes"]
+                claims.append(claim)
+                added += 1
+
+            data["claims"] = claims
+            try:
+                if path.exists():
+                    shutil.copy2(path, path.with_suffix(".yaml.bak"))
+                path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True),
+                                encoding="utf-8")
+            except Exception:
+                logger.exception("autofill: failed to write %s", path)
+                continue
+            summary[category] = {"added": added, "upgraded": upgraded, "skipped": skipped}
+
+        self.reload()
+        return summary
 
     # ----------------------------------------------------------------- serve
     def verified_only(self, categories: list[str] | None = None) -> list[Claim]:

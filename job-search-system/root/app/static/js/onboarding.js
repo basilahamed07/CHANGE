@@ -1,13 +1,19 @@
 // === Onboarding Wizard ===
 
-const ONBOARDING_KEY = 'careerpulse_onboarded';
+// M15b: the onboarding flag is PER USER — otherwise, on a shared browser,
+// user #1 finishing setup would hide the resume prompt from every later user.
+function onboardingKey() {
+    const u = (typeof auth !== 'undefined' && auth.state && auth.state.user)
+        ? auth.state.user.username : '';
+    return `careerpulse_onboarded${u ? ':' + u : ''}`;
+}
 
 function isOnboardingDone() {
-    return localStorage.getItem(ONBOARDING_KEY) === 'true';
+    return localStorage.getItem(onboardingKey()) === 'true';
 }
 
 function markOnboardingDone() {
-    localStorage.setItem(ONBOARDING_KEY, 'true');
+    localStorage.setItem(onboardingKey(), 'true');
 }
 
 async function checkSetupCompleteness() {

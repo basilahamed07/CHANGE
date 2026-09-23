@@ -1196,7 +1196,12 @@ function renderTabJobSearch(container, config, profile, customQA) {
         btn.innerHTML = '<span class="spinner"></span> Analyzing...';
         try {
             const result = await api.uploadResume(fileInput.files[0]);
-            showToast(`Resume analyzed! ${result.search_terms.length} search terms extracted.`, 'success');
+            let msg = `Resume analyzed! ${result.search_terms.length} search terms extracted`;
+            const ev = result.evidence_autofill || {};
+            const evCount = Object.values(ev).reduce((n, c) => n + (c.added || 0) + (c.upgraded || 0), 0);
+            if (evCount) msg += ` · ${evCount} evidence claims verified from your resume`;
+            if ((result.countries_seeded || []).length) msg += ` · countries set to ${result.countries_seeded.join(', ')}`;
+            showToast(msg + '.', 'success');
             settingsData.config = await api.getSearchConfig();
             renderTabJobSearch(container, settingsData.config, profile, customQA);
         } catch (err) { showToast(err.message, 'error'); }
