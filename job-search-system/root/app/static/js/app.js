@@ -64,6 +64,9 @@ async function handleRoute() {
     updateActiveNav();
     const app = document.getElementById('app');
 
+    // M15a: every route passes the auth gate (bootstrap → login → app).
+    if (typeof authGate === 'function' && !(await authGate(app))) return;
+
     if (route.view === 'detail') {
         await renderJobDetail(app, route.id);
     } else if (route.view === 'stats') {

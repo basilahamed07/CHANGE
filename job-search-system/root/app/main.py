@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from app.database import Database
 from app.ai_client import AIClient
+from app.auth import AuthGuardMiddleware, LoginThrottler, SystemStore
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -84,6 +85,10 @@ async def lifespan(app: FastAPI):
     ai_usage.set_db_sink(app.state.db.record_ai_usage)
     await app.state.db.migrate_resume_from_search_config()
     await app.state.db.migrate_normalize_posted_dates()
+
+    # M15a: create users/sessions schema in system.db (idempotent) + close it
+    # on shutdown. Workspace DBs arrive in M15b.
+    await app.state.auth_store.init()
 
     # Separate DB connection for background tasks (scoring, scraping, enrichment)
     # so they don't block API request handling on the main connection.
@@ -313,6 +318,7 @@ async def lifespan(app: FastAPI):
     if bg_db and bg_db is not app.state.db:
         await bg_db.close()
     await app.state.db.close()
+    await app.state.auth_store.close()
 
 
 def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
@@ -322,6 +328,17 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
     app = FastAPI(title="jobagent", lifespan=lifespan)
     app.state.db_path = db_path
     app.state.testing = testing
+
+    # M15a: auth foundation. system.db lives NEXT TO the workspace DB so a
+    # relocated db_path carries its users with it. The ASGI guard is skipped
+    # when testing=True (800+ pre-auth tests + E2E harness unchanged);
+    # test_auth.py exercises the REAL guard with testing=False.
+    from pathlib import Path as _Path
+    _system_db = str(_Path(db_path).parent / "system.db")
+    app.state.auth_store = SystemStore(_system_db)
+    app.state.login_throttler = LoginThrottler()
+    app.add_middleware(AuthGuardMiddleware, store=app.state.auth_store,
+                       throttler=app.state.login_throttler)
 
     app.state.scoring_progress = None
     app.state.scrape_progress = None
@@ -464,6 +481,8 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
     app.state.save_parsed_profile = _save_parsed_profile
 
     # --- Register routers ---
+    from app.routers import auth as auth_router
+    app.include_router(auth_router.router)
     from app.routers import jobs, tailoring, pipeline, queue, contacts, analytics, settings, alerts, scraping, autofill, interviews, calendar, evidence
     app.include_router(jobs.router)
     app.include_router(tailoring.router)

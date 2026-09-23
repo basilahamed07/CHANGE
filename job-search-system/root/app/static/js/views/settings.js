@@ -31,6 +31,7 @@ function renderSettingsShell(container) {
         { id: 'resumes', label: 'Resumes' },
         { id: 'work-history', label: 'Work History' },
         { id: 'job-search', label: 'Job Search' },
+        { id: 'discovery', label: 'Countries & Discovery' },
         { id: 'alerts', label: 'Alerts' },
         { id: 'follow-ups', label: 'Follow-Ups' },
         { id: 'integrations', label: 'AI & Integrations' },
@@ -71,11 +72,120 @@ function renderActiveTab(shell) {
         case 'resumes': renderTabResumes(content, d.resumes || []); break;
         case 'work-history': renderTabWorkHistory(content, d.fullProfile || {}); break;
         case 'job-search': renderTabJobSearch(content, d.config || {}, d.fullProfile || d.profile || {}, d.customQA || []); break;
+        case 'discovery': renderTabDiscovery(content); break;
         case 'alerts': renderTabAlerts(content); break;
         case 'follow-ups': renderTabFollowUps(content); break;
         case 'integrations': renderTabAI(content, d.aiSettings || {}, d.scraperKeys || {}, d.emailSettings || {}, d.embeddingSettings || {}); break;
         case 'data': renderTabData(content); break;
     }
+}
+
+async function renderTabDiscovery(content) {
+    content.innerHTML = '<div class="loading-container"><span class="spinner"></span></div>';
+    let countries, adapters, health, discoveryStatus;
+    try {
+        [countries, adapters, health, discoveryStatus] = await Promise.all([
+            api.request('GET', '/api/countries'),
+            api.request('GET', '/api/discovery/adapters').catch(() => ({ adapters: [] })),
+            api.request('GET', '/api/discovery/health').catch(() => null),
+            api.request('GET', '/api/discovery/status').catch(() => null),
+        ]);
+    } catch (err) {
+        content.innerHTML = `<div class="empty-state"><div class="empty-state-title">Could not load discovery settings</div><div class="empty-state-desc">${escapeHtml(err.message)}</div></div>`;
+        return;
+    }
+    const list = countries.countries || countries || [];
+    const healthMap = {}; 
+    try { (health.sources || health || []).forEach(s => { if (s.source) healthMap[s.source] = s.status || s.healthy; }); } catch { /* shape varies */ }
+    const lastRun = discoveryStatus && (discoveryStatus.last_cycle || discoveryStatus.last_run || null);
+
+    content.innerHTML = `
+        <h2 style="font-size:1.125rem;font-weight:600;margin-bottom:8px">Country Strategy (M3)</h2>
+        <p style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:16px">Enable the countries you target. Disabling auto-dismisses that country's jobs (reversibly — re-enable to restore them). Adding a new country = one YAML file, zero code.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:24px">
+            ${list.map(c => `
+                <div class="card" style="padding:16px">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <div>
+                            <div style="font-weight:600">${escapeHtml(c.name || c.region)} <span style="font-size:0.75rem;color:var(--text-tertiary)">${escapeHtml(c.region)}</span></div>
+                            <div style="font-size:0.75rem;color:var(--text-tertiary)">${(c.cities || []).slice(0, 4).join(', ')}${(c.cities || []).length > 4 ? '…' : ''}</div>
+                        </div>
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.8125rem">
+                            <input type="checkbox" class="country-toggle" data-region="${escapeHtml(c.region)}" ${c.enabled ? 'checked' : ''}> ${c.enabled ? 'Enabled' : 'Off'}
+                        </label>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:32px">
+            <button class="btn btn-primary" id="apply-strategy-btn">Apply Strategy</button>
+            <button class="btn btn-secondary" id="reload-countries-btn">Reload YAML</button>
+        </div>
+
+        <h2 style="font-size:1.125rem;font-weight:600;margin-bottom:8px">Discovery Adapters (M4)</h2>
+        <p style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:16px">ATS + feed sources scraped into your pool. Health = last live probe of the source API.</p>
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+            <button class="btn btn-primary btn-sm" id="run-discovery-btn">Run Discovery Now</button>
+            <button class="btn btn-secondary btn-sm" id="probe-health-btn">Probe Health</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+            ${(adapters.adapters || []).map(a => {
+                const h = healthMap[a.source_name || a.name];
+                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg-surface-secondary);border-radius:var(--radius-sm);font-size:0.875rem">
+                    <div><strong>${escapeHtml(a.source_name || a.name)}</strong> <span style="font-size:0.75rem;color:var(--text-tertiary)">${escapeHtml(a.kind || a.type || '')}</span></div>
+                    <span style="font-size:0.75rem">${h === undefined ? '<span style="color:var(--text-tertiary)">not probed</span>' : (h === true || h === 'ok' || h === 'healthy' ? '<span style="color:#22c55e">healthy</span>' : '<span style="color:#ef4444">unhealthy</span>')}</span>
+                </div>`;
+            }).join('')}
+        </div>
+        ${lastRun ? `<div style="font-size:0.8125rem;color:var(--text-secondary)">Last cycle: found ${lastRun.found ?? '?'} · ingested ${lastRun.ingested ?? '?'} · duplicates ${lastRun.duplicates ?? '?'} · stop: ${escapeHtml(String(lastRun.stop_reason || 'n/a'))}</div>` : ''}
+        <div id="discovery-run-result" style="margin-top:12px"></div>
+    `;
+
+    content.querySelectorAll('.country-toggle').forEach(cb => {
+        cb.addEventListener('change', async () => {
+            const region = cb.dataset.region;
+            const enabled = cb.checked;
+            try {
+                await api.request('PUT', `/api/countries/${encodeURIComponent(region)}`, { enabled });
+                cb.nextSibling.textContent = enabled ? 'Enabled' : 'Off';
+                showToast(`${region} ${enabled ? 'enabled' : 'disabled'}`, 'success');
+            } catch (err) {
+                cb.checked = !enabled;
+                showToast(err.message, 'error');
+            }
+        });
+    });
+    document.getElementById('apply-strategy-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('apply-strategy-btn');
+        btn.disabled = true;
+        try {
+            const r = await api.request('POST', '/api/countries/apply', {});
+            showToast(`Strategy applied: ${JSON.stringify(r.counts || r).substring(0, 120)}`, 'success');
+        } catch (err) { showToast(err.message, 'error'); }
+        finally { btn.disabled = false; }
+    });
+    document.getElementById('reload-countries-btn').addEventListener('click', async () => {
+        try { await api.request('POST', '/api/countries/reload', {}); showToast('Country configs reloaded', 'success'); renderTabDiscovery(content); }
+        catch (err) { showToast(err.message, 'error'); }
+    });
+    document.getElementById('run-discovery-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('run-discovery-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Running…';
+        try {
+            const r = await api.request('POST', '/api/discovery/run', {});
+            document.getElementById('discovery-run-result').innerHTML = `<div style="font-size:0.8125rem;color:var(--text-secondary)">Discovery started${r.task_id ? ` (task ${r.task_id})` : ''} — check the Jobs page for new listings.</div>`;
+            showToast('Discovery cycle started', 'success');
+        } catch (err) { showToast(err.message, 'error'); }
+        finally { btn.disabled = false; btn.textContent = 'Run Discovery Now'; }
+    });
+    document.getElementById('probe-health-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('probe-health-btn');
+        btn.disabled = true;
+        try { await renderTabDiscovery(content); showToast('Health probed', 'success'); }
+        catch (err) { showToast(err.message, 'error'); }
+        finally { btn.disabled = false; }
+    });
 }
 
 async function renderTabAlerts(content) {

@@ -38,6 +38,15 @@ async function renderNetwork(container) {
                 `}
             </div>
             <div id="contact-detail-panel" style="display:none"></div>
+            <div class="card" style="padding:24px;margin-top:24px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                    <h2 style="font-size:1.125rem;font-weight:600;margin:0">Outreach Drafts (M9 — draft only, never auto-sent)</h2>
+                    <button class="btn btn-primary btn-sm" id="run-followups-btn">Draft Due Follow-ups</button>
+                </div>
+                <div id="outreach-messages-container">
+                    <div class="loading-container"><span class="spinner"></span></div>
+                </div>
+            </div>
             <div id="contact-form-panel" style="display:none">
                 <div class="card" style="padding:24px;margin-top:16px">
                     <h3 style="font-size:1rem;font-weight:600;margin-bottom:12px" id="contact-form-title">Add Contact</h3>
@@ -59,6 +68,47 @@ async function renderNetwork(container) {
         `;
 
         let editingContactId = null;
+
+        // M9/M10: outreach drafts + follow-up engine UI
+        (async () => {
+            const oc = document.getElementById('outreach-messages-container');
+            if (!oc) return;
+            try {
+                const data = await api.request('GET', '/api/outreach/messages');
+                const msgs = data.messages || data.outreach_messages || [];
+                oc.innerHTML = msgs.length ? `
+                    <div style="display:flex;flex-direction:column;gap:6px">
+                        ${msgs.map(m => `
+                            <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 14px;background:var(--bg-surface-secondary);border-radius:var(--radius-sm);font-size:0.8125rem">
+                                <div>
+                                    <strong>${escapeHtml(String(m.audience || 'outreach'))}</strong>
+                                    ${m.job_id ? `<a href="#/job/${m.job_id}" style="color:var(--accent);margin-left:6px">job #${m.job_id}</a>` : ''}
+                                    ${m.draft_id ? `<span style="color:var(--text-tertiary);margin-left:6px">draft ${escapeHtml(String(m.draft_id)).substring(0, 18)}</span>` : ''}
+                                </div>
+                                <div style="display:flex;gap:8px;flex-shrink:0;align-items:center">
+                                    <span style="font-size:0.75rem;color:var(--text-tertiary)">${escapeHtml(m.provider || 'local')}</span>
+                                    <span class="status-badge" style="font-size:0.75rem">${escapeHtml(m.status || 'drafted')}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : '<div style="font-size:0.875rem;color:var(--text-tertiary)">No outreach drafts yet. Open a job and use “Create Outreach Draft”.</div>';
+            } catch (err) {
+                oc.innerHTML = `<div style="font-size:0.8125rem;color:var(--text-tertiary)">Outreach list unavailable: ${escapeHtml(err.message)}</div>`;
+            }
+        })();
+        document.getElementById('run-followups-btn')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Drafting…';
+            try {
+                const r = await api.request('POST', '/api/crm/followups/run', {});
+                const drafted = r.drafted ?? r.followups_draft ?? r.created ?? '?';
+                showToast(`Follow-ups drafted: ${drafted}`, 'success');
+                handleRoute();
+            } catch (err) { showToast(err.message, 'error'); }
+            finally { btn.disabled = false; btn.textContent = 'Draft Due Follow-ups'; }
+        });
 
         // Search filter
         document.getElementById('contact-search').addEventListener('input', (e) => {

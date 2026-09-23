@@ -483,7 +483,9 @@ async def test_upload_resume_docx_extracts_text(client, app):
 @pytest.mark.asyncio
 async def test_upload_resume_env_fallback_path_no_crash(client, app, monkeypatch):
     """Regression for the live crash: production path (testing=False, no client on
-    state, no DB AI settings) must build-or-skip gracefully, not 500."""
+    state, no DB AI settings) must build-or-skip gracefully, not 500.
+    M15a: testing=False also activates the auth guard, so this test logs in
+    first — exactly like the real production path."""
     app.state.testing = False
     app.state.ai_client = None
     if not hasattr(app.state, "settings"):
@@ -491,6 +493,12 @@ async def test_upload_resume_env_fallback_path_no_crash(client, app, monkeypatch
         app.state.settings = Settings(openrouter_api_key="", anthropic_api_key="")
     monkeypatch.setattr(app.state.settings, "openrouter_api_key", "", raising=False)
     monkeypatch.setattr(app.state.settings, "anthropic_api_key", "", raising=False)
+
+    # Production path = auth guard active. Bootstrap the first admin (sets the
+    # session cookie on the client) so the upload runs through the real guard.
+    boot = await client.post("/api/auth/bootstrap",
+                             json={"username": "basil", "password": "admin-pass-123"})
+    assert boot.status_code == 200
 
     import io
     files = {"file": ("resume.txt", io.BytesIO(b"Fallback path resume"), "text/plain")}

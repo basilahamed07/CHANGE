@@ -39,7 +39,9 @@
 
 ## 3. CURRENT STATE
 
-- **Phases completed:** 0–4, 5–11 (M3+M4+M5), 12–13 (M6), 15–17 (M7), 18–19 (M8), 20–22 (M9), 42, 43 (analysis-only gate satisfied)
+- **Phases completed:** 0–4, 5–11 (M3+M4+M5), 12–13 (M6), 15–17 (M7), 18–19 (M8), 20–22 (M9), 23–28+31–41 (M10–M14), 42, 43; **M15a auth COMPLETE 2026-09-23**
+- **Multi-user plan:** docs/MULTI_USER_PLAN.md (Basil decisions: 2–10 users, per-user discovery, admin full access via audited impersonation; Option C = per-user SQLite workspace, zero schema changes). M15a done; M15b–M15e pending.
+- **UI coverage (Basil's audit request):** ALL milestone features now reachable in the UI — Dashboard: Daily Run panel (run/stages/shortfall) + Targeting Feedback (M12); Settings: Countries & Discovery tab (M3+M4); Job detail: Pipeline Actions panel (M5–M9: eligibility, hybrid score, contacts, package build/repackage/download, outreach draft); Network: Outreach drafts list + Draft-due-follow-ups button (M9/M10). Guide: docs/USER_GUIDE.md.
 - **Current phase:** M9 COMPLETE ✅ → next up **M10 (CRM + follow-up engine + approval matrix)**
 - **Approved to implement:** YES — Basil approved M1 start after architecture review
 - **Workspace:** `job-search-system/` with root/ (final product), references/ (5 clones), docs/, analysis/
@@ -307,11 +309,43 @@
     caps matrix, followup time-travel, API double-create); **805 passed** full
     suite (+17). E2E: 16g — 10/10 incl. Critical #4 via live API; full harness
     **147/147, 0 FAIL**. Report: docs/M9_E2E_TEST_REPORT.md.
-- M10 CRM + follow-ups — PENDING
-- M11 Scheduler — PENDING
-- M12 Analytics + feedback — PENDING
-- M13 UI refinement — PENDING
-- M14 Tests + docs + hardening — PENDING
+- M10 CRM + follow-ups — **DONE 2026-09-23** (Session 23; E2E-verified)
+- M11 Daily pipeline — **DONE 2026-09-23** (Session 23)
+- M12 Response monitor + feedback — **DONE 2026-09-23** (Session 23)
+- M13 CLI — **DONE 2026-09-23** (Session 23)
+- M14 Hardening + observability — **DONE 2026-09-23** (Sessions 23–24)
+- M15a Auth foundation — **DONE 2026-09-23** (E2E-verified). Details:
+  - `app/auth.py` — SystemStore (system.db: users/sessions/admin_actions), scrypt
+    hashing (stdlib, zero deps), SHA-256-stored session tokens (7-day), LoginThrottler
+    (5 fails → 15-min lock), AuthGuardMiddleware (ASGI; enforces session on ALL paths
+    except /, /static/*, /api/auth/*, /api/system/health, /docs; HTML 303→/ else 401).
+    testing=True bypass keeps the 900+ pre-auth unit tests untouched; test_auth.py
+    (25 tests) exercises the REAL guard via testing=False.
+  - `app/routers/auth.py` — /api/auth/status|bootstrap|login|logout|me|change-password;
+    one-time admin bootstrap (403 after first user); uniform login errors;
+    change-password revokes all sessions; lazy ensure() init for lifespan-less clients.
+  - Frontend: `static/js/auth.js` (bootstrap/login screens, authGate in handleRoute,
+    nav user-chip + logout), api.js updateApplication note. First visit → Create Admin;
+    then Sign In.
+  - **UI coverage fix (Basil's request):** Dashboard = Daily Run panel + Targeting
+    Feedback; Settings = Countries & Discovery tab (toggle countries, apply strategy,
+    reload YAML, run discovery, adapter health); Job detail = Pipeline Actions panel
+    (eligibility re-check, hybrid score+components, contact research, build/repackage
+    package + download, create outreach draft); Network = outreach drafts + follow-up
+    drafting button.
+  - Verification: 25 new auth unit tests; **931 backend + 180 frontend green**;
+    E2E harness: new section 0 auth (8 checks incl. anonymous-401 + login over live
+    SSE-probe socket) → **190/190 PASS, 0 FAIL**. Live server verified: health 200,
+    anon /api/jobs 401, bootstrap pending. Server run command updated to
+    `uvicorn app.main:create_app --factory`.
+  - Bugs found+fixed: aiosqlite.connect() unawaited-connection bug in get_user
+    fallback; SSE probe needed login (fresh client had no cookie);
+    test_upload_resume_env_fallback_path_no_crash now logs in (production path =
+    guard active).
+- M15b User workspaces — PENDING
+- M15c Per-user pipeline features — PENDING
+- M15d Admin panel — PENDING
+- M15e Hardening + migration (Critical Test #5) — PENDING
 
 ## 6. REFERENCE REPOSITORIES
 

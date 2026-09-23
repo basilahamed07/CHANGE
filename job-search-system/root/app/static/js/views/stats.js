@@ -98,11 +98,30 @@ async function renderStats(container) {
             </div>
             <div class="card" style="padding:24px;margin-top:24px">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <h2 style="font-size:1.125rem;font-weight:600;margin:0">Daily Run Pipeline (M11)</h2>
+                    <button class="btn btn-primary btn-sm" id="daily-run-btn">Run Daily Pipeline</button>
+                </div>
+                <p style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:12px">One click runs: discover &rarr; classify &rarr; eligibility &rarr; score &rarr; select &rarr; research &rarr; packages &rarr; outreach drafts &rarr; digest. Resumable &amp; idempotent.</p>
+                <div id="daily-run-container">
+                    <div class="loading-container"><span class="spinner"></span></div>
+                </div>
+            </div>
+            <div class="card" style="padding:24px;margin-top:24px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
                     <h2 style="font-size:1.125rem;font-weight:600;margin:0">AI Usage &amp; Cost</h2>
                     <a href="#/settings" style="font-size:0.8125rem;color:var(--accent)">Provider settings</a>
                 </div>
                 <p style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:12px">Token metering and estimated spend per model, plus today's pipeline activity.</p>
                 <div id="monitoring-container">
+                    <div class="loading-container"><span class="spinner"></span></div>
+                </div>
+            </div>
+            <div class="card" style="padding:24px;margin-top:24px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <h2 style="font-size:1.125rem;font-weight:600;margin:0">Targeting Feedback (M12)</h2>
+                </div>
+                <p style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:12px">Response-rate analysis and advisory targeting suggestions (never auto-applied).</p>
+                <div id="feedback-container">
                     <div class="loading-container"><span class="spinner"></span></div>
                 </div>
             </div>
@@ -502,6 +521,63 @@ async function renderStats(container) {
         } catch {
             document.getElementById('response-analytics-container').innerHTML = '<div class="empty-state empty-state-compact"><div class="empty-state-title">Could not load response data</div><div class="empty-state-desc">Try refreshing the page.</div></div>';
         }
+
+        // Daily Run pipeline panel (M11 — status + run + shortfall reasons)
+        try {
+            const runContainer = document.getElementById('daily-run-container');
+            const renderRun = (r) => {
+                const stages = r.stages || [];
+                const badge = { done: '#22c55e', running: '#f59e0b', failed: '#ef4444', skipped: '#94a3b8', pending: 'var(--text-tertiary)' };
+                runContainer.innerHTML = `
+                    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:0.875rem">
+                        <span>Packages today: <strong>${r.packages_created ?? 0}</strong> / target ${r.daily_target ?? '-'}</span>
+                        <span>${r.target_met ? '<span style="color:#22c55e;font-weight:600">Target met ✓</span>' : (r.shortfall_reasons || []).length ? `Shortfall: ${(r.shortfall_reasons || []).join(', ')}` : 'Not run yet'}</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                        ${stages.map(s => `
+                            <div style="display:flex;align-items:center;gap:8px;font-size:0.8125rem">
+                                <span style="width:10px;height:10px;border-radius:50%;background:${badge[s.status] || 'var(--text-tertiary)'};flex-shrink:0"></span>
+                                <span style="width:110px;color:var(--text-secondary)">${s.name}</span>
+                                <span style="color:var(--text-tertiary)">${s.status}${s.detail && s.detail.error ? ' — ' + escapeHtml(String(s.detail.error)).substring(0, 80) : ''}</span>
+                            </div>
+                        `).join('') || '<div style="font-size:0.875rem;color:var(--text-tertiary)">No run yet today. Click “Run Daily Pipeline”.</div>'}
+                    </div>`;
+            };
+            let todayData = await api.request('GET', '/api/daily-run/today').catch(() => null);
+            if (todayData) renderRun(todayData);
+            else runContainer.innerHTML = '<div style="font-size:0.875rem;color:var(--text-tertiary)">Daily-run status unavailable.</div>';
+            document.getElementById('daily-run-btn').addEventListener('click', async () => {
+                const btn = document.getElementById('daily-run-btn');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span> Running…';
+                try {
+                    const res = await api.request('POST', '/api/daily-run/run', {});
+                    renderRun(res.report || res);
+                    showToast(res.report && res.report.target_met ? 'Daily target met!' : 'Daily run finished', res.report && res.report.target_met ? 'success' : 'info');
+                } catch (err) { showToast(err.message, 'error'); }
+                finally { btn.disabled = false; btn.textContent = 'Run Daily Pipeline'; }
+            });
+        } catch {
+            document.getElementById('daily-run-container').innerHTML = '<div class="empty-state empty-state-compact"><div class="empty-state-title">Could not load daily-run status</div></div>';
+        }
+
+        // Targeting feedback loop (M12 — /api/analytics/feedback)
+        try {
+            const fb = await api.request('GET', '/api/analytics/feedback');
+            const fbEl = document.getElementById('feedback-container');
+            if (fbEl) {
+                const recs = (fb.recommendations || []).slice(0, 5);
+                fbEl.innerHTML = `
+                    <div style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:8px">
+                        Median days to response: <strong>${fb.median_days_to_response ?? '--'}</strong> · suggestions are advisory (auto_rewrite_performed: ${fb.auto_rewrite_performed === true ? 'true' : 'false'})
+                    </div>
+                    ${recs.length ? recs.map(r => `
+                        <div style="padding:10px 12px;background:var(--bg-surface-secondary);border-radius:var(--radius-sm);border-left:3px solid var(--accent);margin-bottom:6px;font-size:0.8125rem">
+                            ${escapeHtml(typeof r === 'string' ? r : (r.message || JSON.stringify(r)))}
+                        </div>
+                    `).join('') : '<div style="font-size:0.875rem;color:var(--text-tertiary)">No recommendations yet — needs more response data.</div>'}`;
+            }
+        } catch { /* feedback panel optional */ }
 
         // AI Usage & Cost (M14 observability)
         try {

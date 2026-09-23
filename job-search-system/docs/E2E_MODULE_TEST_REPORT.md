@@ -1,13 +1,27 @@
 # E2E MODULE TEST REPORT — jobagent website, every module
 
-**Date:** 2026-09-23 11:09 UTC  
+**Date:** 2026-09-23 16:11 UTC  
 **Method:** isolated instance of the real app (fresh DB, real free AI model `poolside/laguna-s-2.1:free`, evidence profile seeded from Basil's actual resume). Every module exercised through its public HTTP API with real flows — real .docx upload, real AI scoring/tailoring/cover-letter/interview-prep, real evidence-gate enforcement.
 
 **AI live-run:** NO — free-tier quota exhausted or unreachable; AI checks recorded as SKIP  
 
-## RESULT: **178/178 checks passed** (168 PASS · 10 SKIP · 0 FAIL)
+## RESULT: **190/190 checks passed** (180 PASS · 10 SKIP · 0 FAIL)
 
 ## All checks by module
+
+### auth — 12/12
+- ✅ status probe (pre-bootstrap)
+- ✅ fresh instance needs bootstrap — status={'needs_bootstrap': True, 'authenticated': False, 'user': None}
+- ✅ anonymous request to protected API rejected (401)
+- ✅ 401 body asks for authentication — {"detail":"Authentication required"}
+- ✅ browser page request redirects to login (303 → /) — got 303
+- ✅ bootstrap first admin account
+- ✅ bootstrap issues HttpOnly session cookie
+- ✅ second bootstrap refused (admin locked)
+- ✅ session resolves current user
+- ✅ session user is basil/admin — {"user":{"id":1,"username":"basil","role":"admin"}}
+- ✅ wrong password rejected uniformly (401)
+- ✅ authenticated request passes guard
 
 ### system — 5/5
 - ✅ /api/system/health
@@ -31,7 +45,7 @@
 ### evidence — 5/5
 - ✅ /api/evidence
 - ✅ claims loaded — {'VERIFIED': 4, 'UNVERIFIED': 1, 'DISPUTED': 0, 'DO_NOT_USE': 1}
-- ✅ verified-backed text PASSES gate — {"ok":true,"failures":[],"warnings":[],"checked_at":"2026-09-23T11:08:50.854903+00:00"}
+- ✅ verified-backed text PASSES gate — {"ok":true,"failures":[],"warnings":[],"checked_at":"2026-09-23T16:11:10.768770+00:00"}
 - ✅ fabricated text BLOCKED by gate — ['fabricated_number', 'unsupported_skill']
 - ✅ reload
 

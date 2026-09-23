@@ -220,6 +220,9 @@ function renderJobDetailContent(container, job, profile = {}, companyInfo = null
                     </div>`;
                 })()}
                 <div class="card sidebar-section">
+                    <div id="pipeline-actions-container"><div class="loading-container"><span class="spinner"></span></div></div>
+                </div>
+                <div class="card sidebar-section">
                     <h3>Timeline</h3>
                     ${renderQuickActions(job)}
                     <div class="timeline" id="timeline-container">
@@ -492,6 +495,7 @@ function renderJobDetailContent(container, job, profile = {}, companyInfo = null
     }
 
     wireCrmQuickActions(job, container, profile, companyInfo, resumes);
+    wirePipelineActions(job, container, resumes);
 
     const emailBtn = document.getElementById('email-btn');
     if (emailBtn) {
@@ -785,6 +789,115 @@ function getCrmFormHtml(action) {
             <button class="btn btn-primary btn-sm" id="add-note-btn">Add</button>
         </div>
     `;
+}
+
+function wirePipelineActions(job, container, resumes) {
+    const panel = document.getElementById('pipeline-actions-container');
+    if (!panel) return;
+
+    function renderPanel(data) {
+        const elig = data.eligibility || {};
+        const hybrid = data.hybrid || {};
+        const contacts = (data.contacts && (data.contacts.candidates || data.contacts.contacts)) || [];
+        const selected = data.contacts && (data.contacts.selected || data.contacts.selected_contact);
+        const pkg = data.package || null;
+        const outreach = data.outreach || [];
+        const score = (job.score && job.score.hybrid_overall) || hybrid.overall || null;
+        const comp = hybrid.component_scores || {};
+        panel.innerHTML = `
+            <h3 style="font-size:1rem;font-weight:600;margin-bottom:12px">Pipeline Actions</h3>
+            <div style="display:flex;flex-direction:column;gap:12px;font-size:0.8125rem">
+                <div>
+                    <div style="font-weight:600;margin-bottom:4px">Eligibility (M5)</div>
+                    <div style="color:${elig.eligible ? '#22c55e' : '#ef4444'}">${elig.eligible === undefined ? 'not evaluated' : (elig.eligible ? 'ELIGIBLE' : `INELIGIBLE — ${escapeHtml((elig.reasons || []).map(r => r.code || r).join(', ') || 'unknown')}`)}</div>
+                    <button class="btn btn-secondary btn-sm" id="recheck-elig-btn" style="margin-top:4px">Re-check Eligibility</button>
+                </div>
+                <div>
+                    <div style="font-weight:600;margin-bottom:4px">Hybrid Match (M6)</div>
+                    ${score != null ? `
+                        <div>Score: <strong>${score}</strong> ${hybrid.hard_blockers && hybrid.hard_blockers.length ? `<span style="color:#ef4444">· blockers: ${escapeHtml(hybrid.hard_blockers.join(', '))}</span>` : ''}</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+                            ${Object.entries(comp).map(([k, v]) => `<span style="padding:2px 8px;background:var(--bg-surface-secondary);border-radius:10px">${escapeHtml(k)}: ${typeof v === 'number' ? v.toFixed(2) : escapeHtml(String(v))}</span>`).join('')}
+                        </div>` : '<div style="color:var(--text-tertiary)">Not scored yet</div>'}
+                    <button class="btn btn-secondary btn-sm" id="hybrid-score-btn" style="margin-top:4px">Score (free, deterministic)</button>
+                </div>
+                <div>
+                    <div style="font-weight:600;margin-bottom:4px">Contact Research (M7)</div>
+                    ${selected ? `<div>${escapeHtml(selected.name || 'Contact')} &lt;${escapeHtml(selected.email || '')}&gt; · ${escapeHtml(selected.role_type || '')} · confidence ${selected.confidence ?? '?'}</div>`
+                        : contacts.length ? `<div style="color:var(--text-tertiary)">${contacts.length} candidates found — none selected</div>`
+                        : '<div style="color:var(--text-tertiary)">No contacts on file</div>'}
+                    <button class="btn btn-secondary btn-sm" id="research-contacts-btn" style="margin-top:4px">Find Contacts</button>
+                </div>
+                <div>
+                    <div style="font-weight:600;margin-bottom:4px">Application Package (M8)</div>
+                    ${pkg ? `<div>status: <strong>${escapeHtml(pkg.package_status || 'ready_for_review')}</strong></div>
+                        <a class="btn btn-secondary btn-sm" href="/api/packages/jobs/${job.id}/download/resume.docx" style="margin-top:4px">Download resume.docx</a>`
+                        : '<div style="color:var(--text-tertiary)">No package built</div>'}
+                    <div style="display:flex;gap:6px;margin-top:4px">
+                        <button class="btn btn-primary btn-sm" id="build-package-btn">Build Package (AI)</button>
+                        <button class="btn btn-secondary btn-sm" id="repackage-btn" title="Zero AI cost — repackages stored text">Repackage (free)</button>
+                    </div>
+                </div>
+                <div>
+                    <div style="font-weight:600;margin-bottom:4px">Outreach Drafts (M9 — draft only)</div>
+                    ${outreach.length ? outreach.map(o => `<div>${escapeHtml(o.audience)} · ${escapeHtml(o.provider || 'local')} · ${escapeHtml(o.status || '')}</div>`).join('') : '<div style="color:var(--text-tertiary)">No outreach yet</div>'}
+                    <button class="btn btn-primary btn-sm" id="create-outreach-btn" style="margin-top:4px">Create Outreach Draft</button>
+                </div>
+            </div>
+            <div id="pipeline-action-result" style="margin-top:10px;font-size:0.8125rem;color:var(--text-secondary)"></div>
+        `;
+
+        const result = (msg, ok = true) => {
+            const el = document.getElementById('pipeline-action-result');
+            if (el) { el.textContent = msg; el.style.color = ok ? 'var(--text-secondary)' : 'var(--danger, #ef4444)'; }
+        };
+        const wireBtn = (id, fn) => { const b = document.getElementById(id); if (b) b.addEventListener('click', () => { b.disabled = true; fn().catch(e => result(e.message, false)).finally(() => { b.disabled = false; }); }); };
+
+        wireBtn('recheck-elig-btn', async () => {
+            const r = await api.request('POST', `/api/jobs/${job.id}/eligibility`, {});
+            await loadPanelData();
+            result(`Eligibility: ${JSON.stringify(r).substring(0, 140)}`);
+        });
+        wireBtn('hybrid-score-btn', async () => {
+            const r = await api.request('POST', `/api/matching/jobs/${job.id}/score`, {});
+            await loadPanelData();
+            result(`Hybrid score: ${JSON.stringify(r.overall ?? r.score ?? r).substring(0, 140)}`);
+        });
+        wireBtn('research-contacts-btn', async () => {
+            const r = await api.request('POST', `/api/research/contacts/job/${job.id}`, {});
+            await loadPanelData();
+            result('Contact research complete');
+        });
+        wireBtn('build-package-btn', async () => {
+            if (!await requireAI()) return;
+            const r = await api.request('POST', `/api/packages/jobs/${job.id}/build`, {});
+            await loadPanelData();
+            result(`Package ${r.status || 'built'} → ${escapeHtml(String(r.package_dir || 'data/applications/'))}`);
+        });
+        wireBtn('repackage-btn', async () => {
+            const r = await api.request('POST', `/api/packages/jobs/${job.id}/build?refresh=true`, {});
+            await loadPanelData();
+            result(`Repackaged (zero AI) → ${escapeHtml(String(r.package_dir || ''))}`);
+        });
+        wireBtn('create-outreach-btn', async () => {
+            const r = await api.request('POST', `/api/outreach/jobs/${job.id}/create`, {});
+            await loadPanelData();
+            result(r.already_exists ? 'Draft already exists (idempotent — no duplicate)' : `Draft created via ${r.provider || 'local'}`);
+        });
+    }
+
+    async function loadPanelData() {
+        const [eligibility, hybrid, contacts, pkg, outreach] = await Promise.all([
+            api.request('GET', `/api/jobs/${job.id}/eligibility`).catch(() => ({})),
+            api.request('GET', `/api/jobs/${job.id}/explain`).catch(() => ({})),
+            api.request('GET', `/api/research/contacts/job/${job.id}`).catch(() => ({})),
+            api.request('GET', `/api/packages/jobs/${job.id}`).catch(() => null),
+            api.request('GET', `/api/outreach/jobs/${job.id}`).catch(() => ({ messages: [] })),
+        ]);
+        renderPanel({ eligibility, hybrid: hybrid.explanation ? hybrid : (hybrid.score ? hybrid : hybrid), contacts, package: pkg && (pkg.package || pkg.application || pkg), outreach: outreach.messages || outreach.outreach || [] });
+    }
+
+    loadPanelData().catch(() => renderPanel({}));
 }
 
 function wireCrmQuickActions(job, container, profile, companyInfo, resumes) {

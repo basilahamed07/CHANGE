@@ -168,14 +168,16 @@ The daily run (`POST /api/daily-run/run`) executes these stages **in this exact 
 ### 3.14 Rest of the UI (8 pages)
 | Page | What's on it |
 |------|--------------|
+| **Login / Bootstrap** | M15a auth — first visit creates the admin, then sign-in (7-day sessions) |
 | **Jobs** (`#/`) | Live job feed, filters, scores, open a job for detail |
-| **Dashboard** (`#/stats`) | Funnel, analytics, AI Usage & Cost panel |
-| **Pipeline** (`#/pipeline`) | Kanban CRM board — drag & drop statuses |
+| **Dashboard** (`#/stats`) | Funnel, analytics, **Daily Run pipeline panel (run + stage status + shortfall reasons)**, **Targeting Feedback (M12)**, AI Usage & Cost panel |
+| **Pipeline** (`#/pipeline`) | Kanban CRM board — drag & drop statuses (M10 engine) |
 | **Calendar** (`#/calendar`) | Interviews & events |
 | **Queue** (`#/queue`) | Approval queue + daily-run controls |
-| **Network** (`#/network`) | Contacts & outreach overview |
+| **Network** (`#/network`) | Contacts, **Outreach Drafts list (M9)** + **"Draft Due Follow-ups" button (M10)** |
 | **Calculator** (`#/calculator`) | Salary calculator (feature-flag gated, OFF by default) |
-| **Settings** (`#/settings`) | AI provider + model, keys, country strategy, evidence, daily run |
+| **Settings** (`#/settings`) | Profile, Resumes, Job Search, **Countries & Discovery tab (M3+M4: enable/disable countries, apply strategy, run discovery, adapter health)**, Alerts, Follow-Ups, AI & Integrations, Data Management |
+| **Job detail page** | Adds **Pipeline Actions panel (M5–M9): re-check eligibility, free hybrid score + component breakdown, find contacts, build/repackage application package (+download), create outreach draft — all per job, all in the UI** |
 
 ---
 
@@ -213,13 +215,22 @@ JOBAGENT_APOLLO_API_KEY=...                # contact discovery
 
 ### Step 4 — Start the server
 ```bash
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8085
+uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8085
 ```
 Verify:
 ```bash
 curl http://127.0.0.1:8085/api/system/health
 ```
-Open **http://127.0.0.1:8085** → the onboarding flow walks you through the rest.
+Open **http://127.0.0.1:8085** →
+
+**M15a — Login first:**
+- **First ever visit:** the app shows **"Create Admin Account"** — pick your username and a password (min 8 chars). This one-time bootstrap creates the administrator and locks itself forever.
+- **Every visit after:** you land on the **Sign In** page. Sessions last 7 days; "Log out" is in the top-right nav.
+- 5 failed logins = 15-minute lockout (brute-force protection).
+- The onboarding flow then walks you through the rest.
+
+> The whole API is now protected: every `/api/*` endpoint except `/api/system/health`
+> and `/api/auth/*` returns **401** without a valid session.
 
 ### Step 5 — Upload your resume
 - Settings (or onboarding) → upload your **.docx resume**.
@@ -468,6 +479,7 @@ Shows: response rate per source, median days-to-response, and targeting recommen
 5. **Reversible strategy.** Country auto-dismissals are flagged and restored when you re-enable a country.
 6. **Terminal is terminal.** Rejected/withdrawn applications can't resurrect; follow-ups stop.
 7. **No secrets in git.** `.env`, `data/`, `*.docx`, references/ are gitignored; secret scan ran clean pre-push.
+8. **Auth required (M15a).** Every API route needs a session (HttpOnly cookie, 7-day). scrypt-hashed passwords, login lockout, one-time admin bootstrap. The E2E harness logs in as part of every run.
 
 ---
 
@@ -476,6 +488,9 @@ Shows: response rate per source, median days-to-response, and targeting recommen
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
+| `401 Authentication required` | Session missing/expired | Log in again; sessions last 7 days |
+| `429 too many failed logins` | 5 wrong attempts | Wait 15 minutes (lockout) |
+| "Create Admin Account" shows again | system.db was deleted | Expected only on a wiped system.db — recreate admin |
 | `429` / quota errors on scoring | OpenRouter free-tier 50/day limit | Switch to DeepSeek (Section 8) or wait for reset; hybrid scoring keeps the pool scored anyway |
 | Packages build but score filter shows nothing above cutoff | Everything scored below 60 | `GET /api/matching/top-jobs?limit=50` — check hard blockers (sponsorship keywords) and lower cutoff only consciously |
 | Daily run shows `AI_QUOTA_EXHAUSTED` | Quota died mid-run | Re-run the same command after reset — completed stages are never re-run |

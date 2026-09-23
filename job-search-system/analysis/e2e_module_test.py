@@ -230,6 +230,41 @@ async def run_checks(app, client: httpx.AsyncClient, ai_job: int, ml_job: int,
                f"got {r.status_code}, expected {expect}" if r.status_code != expect else "")
         return r
 
+    # ================= 0. AUTH (M15a) =================
+    # The app runs with testing=False → the auth guard is LIVE. Bootstrap the
+    # first admin, log in, and verify the guard denies anonymous access.
+    section("0. AUTH & SESSION (M15a)")
+    r = await call("GET", "/api/auth/status", module="auth",
+                   name="status probe (pre-bootstrap)")
+    st = r.json()
+    record("auth", "fresh instance needs bootstrap", st.get("needs_bootstrap") is True,
+           f"status={st}")
+    r = await call("GET", "/api/jobs", expect=401, module="auth",
+                   name="anonymous request to protected API rejected (401)")
+    record("auth", "401 body asks for authentication",
+           "Authentication required" in r.json().get("detail", ""), r.text[:80])
+    r = await client.get("/stats", headers={"accept": "text/html"}, follow_redirects=False)
+    record("auth", "browser page request redirects to login (303 → /)",
+           r.status_code == 303 and r.headers.get("location") == "/",
+           f"got {r.status_code}")
+    r = await call("POST", "/api/auth/bootstrap", module="auth",
+                   json={"username": "basil", "password": "e2e-admin-pass"},
+                   name="bootstrap first admin account")
+    record("auth", "bootstrap issues HttpOnly session cookie",
+           "jobagent_session=" in r.headers.get("set-cookie", "").lower()
+           and "httponly" in r.headers.get("set-cookie", "").lower(), "")
+    r = await call("POST", "/api/auth/bootstrap", module="auth", expect=403,
+                   json={"username": "evil", "password": "second-admin-99"},
+                   name="second bootstrap refused (admin locked)")
+    r = await call("GET", "/api/auth/me", module="auth", name="session resolves current user")
+    record("auth", "session user is basil/admin",
+           r.json().get("user", {}).get("username") == "basil"
+           and r.json().get("user", {}).get("role") == "admin", r.text[:80])
+    r = await call("POST", "/api/auth/login", module="auth", expect=401,
+                   json={"username": "basil", "password": "wrong-password"},
+                   name="wrong password rejected uniformly (401)")
+    await call("GET", "/api/jobs", module="auth", name="authenticated request passes guard")
+
     # ================= 1. SYSTEM / HEALTH =================
     section("1. SYSTEM & HEALTH")
     r = await call("GET", "/api/system/health", module="system")
@@ -568,6 +603,13 @@ async def run_checks(app, client: httpx.AsyncClient, ai_job: int, ml_job: int,
             port = server.servers[0].sockets[0].getsockname()[1]
             probe_client = httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}",
                                              timeout=15)
+            # M15a: fresh client = no session cookie, and the auth guard is LIVE
+            # (testing=False). Log in over the real socket first.
+            _lg = await probe_client.post("/api/auth/login",
+                                          json={"username": "basil",
+                                                "password": "e2e-admin-pass"})
+            if _lg.status_code != 200:
+                raise RuntimeError(f"SSE probe login failed: {_lg.status_code}")
             probe = asyncio.create_task(_sse_probe(probe_client))
             done, _ = await asyncio.wait({probe}, timeout=20)
             if probe in done:
