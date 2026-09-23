@@ -216,6 +216,27 @@ Rules for every milestone:
   → Tracked-source secret scan CLEAN; `.env` gitignored; `_mask_key` on all settings reads;
   dependency versions current (audited manually — pip-audit not installed in sandbox).
 
+### Post-milestone: coverage expansion + capability documentation (Sessions 21 & 26)
+- **Job-source coverage grew 15 → 21 live sources.** Session 21 repaired the broken ones
+  (Wellfound Apollo-state parser + the `Accept-Encoding: br` decompression root cause,
+  Jobicy tag map, Indeed stealth at context level) and registered the orphaned
+  WeWorkRemotely. Session 26 added three more, each **probed live before implementation**:
+  - `AshbyScraper` — ATS JSON, 20 verified boards, **1,733 jobs** with real salary bands
+    parsed from structured compensation tiers.
+  - `LandingJobsScraper` — EU tech board, **45 jobs**; company recovered from the
+    `/at/<slug>/` URL path because the API returns no company field.
+  - `FourDayWeekScraper` — remote / 4-day-week board, paginated, **16 jobs**.
+  A **registry-guard test** asserts every implemented scraper is present in `ALL_SCRAPERS`,
+  so the WeWorkRemotely orphan bug (implemented but never run) cannot recur.
+- **Capability documentation:** `docs/CAPABILITIES.md` — the complete, verified inventory of
+  what this system can do: all 21 sources, the 10-stage pipeline, the matching/scoring
+  layers, CRM + follow-ups, daily run, response analytics, CLI, API surface, security model,
+  cost model and known limits. Headline figures are re-checked against the running app
+  (206 API operations, 45 application tables, 906 backend tests) rather than estimated.
+- **Full M1–M14 E2E re-verification (Session 26):** **178/178 PASS, 0 FAIL.** The only SKIPs
+  are the three AI sections (8 scoring, 10 cover letter, 12 interview prep) which stay
+  deferred until the DeepSeek key is installed — by Basil's explicit instruction.
+
 ---
 
 ## Milestone dependency graph
