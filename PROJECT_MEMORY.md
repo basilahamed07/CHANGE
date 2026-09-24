@@ -43,7 +43,9 @@
 - **Multi-user plan:** docs/MULTI_USER_PLAN.md (Basil decisions: 2–10 users, per-user discovery, admin full access via audited impersonation; Option C = per-user SQLite workspace, zero schema changes). M15a + M15b done; M15c partially done (per-user *interactive* discovery/scrape/score + per-user AI cost meter landed 2026-09-24); M15c remainder + M15d + M15e pending.
 - **UI coverage (Basil's audit request):** ALL milestone features now reachable in the UI — Dashboard: Daily Run panel (run/stages/shortfall) + Targeting Feedback (M12); Settings: Countries & Discovery tab (M3+M4); Job detail: Pipeline Actions panel (M5–M9: eligibility, hybrid score, contacts, package build/repackage/download, outreach draft); Network: Outreach drafts list + Draft-due-follow-ups button (M9/M10). Guide: docs/USER_GUIDE.md.
 - **Current phase:** M10–M14 + M15a + M15b COMPLETE; real end-to-end user journey verified GREEN 2026-09-24. **Next up: M15c remaining items** (per-user Gmail token + per-user scraper keys + per-user *scheduled* cycles; the interactive scrape/score paths are per-user now) → M15d (admin panel) → M15e (hardening + key encryption + Critical Test #5 hardening).
-- **Status board:** docs/E2E_RUN_STATUS.md (live) · **generated report:** docs/USER_JOURNEY_E2E_REPORT.md · raw evidence: analysis/e2e_runs/<date>_<time>/
+- **Status board:** docs/E2E_RUN_STATUS.md (live) · **generated report:** docs/USER_JOURNEY_E2E_REPORT.md · raw evidence: analysis/e2e_runs/<date>_<time>/ (gitignored — contains personal resume text)
+- **User guide:** GUIDE.md (practical start-here: start server, log in, setup, daily use, multi-user, troubleshooting)
+- **Branch (2026-09-24):** work pushed on **`dev_users_based`** (commit 2b008e6) — push WORKS now (`~/.ssh/id_ed25519` is present; the Session-25 "PUSH BLOCKED" note is obsolete)
 - **Approved to implement:** YES — Basil approved M1 start after architecture review
 - **Workspace:** `job-search-system/` with root/ (final product), references/ (5 clones), docs/, analysis/
 - **Analysis artifacts DONE:** docs/REPOSITORY_ANALYSIS.md, docs/FEATURE_MATRIX.md,
