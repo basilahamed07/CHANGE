@@ -39,10 +39,11 @@
 
 ## 3. CURRENT STATE
 
-- **Phases completed:** 0–4, 5–11 (M3+M4+M5), 12–13 (M6), 15–17 (M7), 18–19 (M8), 20–22 (M9), 23–28+31–41 (M10–M14), 42, 43; **M15a auth COMPLETE 2026-09-23**
-- **Multi-user plan:** docs/MULTI_USER_PLAN.md (Basil decisions: 2–10 users, per-user discovery, admin full access via audited impersonation; Option C = per-user SQLite workspace, zero schema changes). M15a done; M15b–M15e pending.
+- **Phases completed:** 0–4, 5–11 (M3+M4+M5), 12–13 (M6), 15–17 (M7), 18–19 (M8), 20–22 (M9), 23–28+31–41 (M10–M14), 42, 43; **M15a auth + M15b workspaces COMPLETE**; **REAL USER-JOURNEY E2E GREEN 2026-09-24 (26/26 scenarios, 204/204 checks, 285 live HTTP calls, 85.8% API coverage)**
+- **Multi-user plan:** docs/MULTI_USER_PLAN.md (Basil decisions: 2–10 users, per-user discovery, admin full access via audited impersonation; Option C = per-user SQLite workspace, zero schema changes). M15a + M15b done; M15c partially done (per-user *interactive* discovery/scrape/score + per-user AI cost meter landed 2026-09-24); M15c remainder + M15d + M15e pending.
 - **UI coverage (Basil's audit request):** ALL milestone features now reachable in the UI — Dashboard: Daily Run panel (run/stages/shortfall) + Targeting Feedback (M12); Settings: Countries & Discovery tab (M3+M4); Job detail: Pipeline Actions panel (M5–M9: eligibility, hybrid score, contacts, package build/repackage/download, outreach draft); Network: Outreach drafts list + Draft-due-follow-ups button (M9/M10). Guide: docs/USER_GUIDE.md.
-- **Current phase:** M9 COMPLETE ✅ → next up **M10 (CRM + follow-up engine + approval matrix)**
+- **Current phase:** M10–M14 + M15a + M15b COMPLETE; real end-to-end user journey verified GREEN 2026-09-24. **Next up: M15c remaining items** (per-user Gmail token + per-user scraper keys + per-user *scheduled* cycles; the interactive scrape/score paths are per-user now) → M15d (admin panel) → M15e (hardening + key encryption + Critical Test #5 hardening).
+- **Status board:** docs/E2E_RUN_STATUS.md (live) · **generated report:** docs/USER_JOURNEY_E2E_REPORT.md · raw evidence: analysis/e2e_runs/<date>_<time>/
 - **Approved to implement:** YES — Basil approved M1 start after architecture review
 - **Workspace:** `job-search-system/` with root/ (final product), references/ (5 clones), docs/, analysis/
 - **Analysis artifacts DONE:** docs/REPOSITORY_ANALYSIS.md, docs/FEATURE_MATRIX.md,
@@ -71,7 +72,7 @@
 | 11 | Eligibility engine | DONE 2026-09-22 (M5) |
 | 12 | Hybrid matching engine | DONE 2026-09-23 (M6 — deterministic, E2E-verified) |
 | 13 | RAG / semantic matching | DONE 2026-09-23 (M6 — RagProvider over VERIFIED evidence) |
-| 14 | Deterministic vs LLM split | PENDING |
+| 14 | Deterministic vs LLM split | DONE (enforced across M5/M6/M9/M10/M12; visa, eligibility, matching, CRM transitions are all zero-LLM) |
 | 15 | Company research | DONE 2026-09-23 (M7 — cached rich fields) |
 | 16 | People/contact discovery | DONE 2026-09-23 (M7 — ContactProvider chain) |
 | 17 | Contact confidence | DONE 2026-09-23 (M7 — deterministic scoring) |
@@ -80,25 +81,25 @@
 | 20 | Outreach engine | DONE 2026-09-23 (M9 — audience variants + caps) |
 | 21 | Outreach sequences (config-driven) | DONE 2026-09-23 (M9 — YAML sequences) |
 | 22 | Gmail draft integration | DONE 2026-09-23 (M9 — DRAFT-ONLY, local fallback) |
-| 23 | Application CRM + events | PENDING |
-| 24 | Kanban dashboard | PENDING |
-| 25 | Daily automation scheduler | PENDING |
-| 26 | Daily target logic | PENDING |
-| 27 | Response monitor | PENDING |
-| 28 | Follow-up engine | PENDING |
-| 29 | Feedback loop | PENDING |
-| 30 | Analytics | PENDING |
-| 31 | Database (SQLite first, migration-friendly) | PENDING |
-| 32 | REST API + OpenAPI | PENDING |
-| 33 | Dashboard pages | PENDING |
-| 34 | Human approval gates | PENDING |
-| 35 | Cost control | PENDING |
-| 36 | Resilience | PENDING |
-| 37 | Security (.env, no secrets committed) | PENDING |
-| 38 | Testing (incl. 4 critical tests) | PENDING |
-| 39 | Observability (run_id etc.) | PENDING |
-| 40 | CLI (same service layer as UI) | PENDING |
-| 41 | Documentation set | PENDING |
+| 23 | Application CRM + events | DONE 2026-09-23 (M10) |
+| 24 | Kanban dashboard | DONE 2026-09-23 (M10 + UI wiring fixed) |
+| 25 | Daily automation scheduler | DONE 2026-09-23 (M11) |
+| 26 | Daily target logic | DONE 2026-09-23 (M11 — qualifying PACKAGES) |
+| 27 | Response monitor | DONE 2026-09-23 (M12) |
+| 28 | Follow-up engine | DONE 2026-09-23 (M10/M11) |
+| 29 | Feedback loop | DONE 2026-09-23 (M12) |
+| 30 | Analytics | DONE 2026-09-23 (M12/M14) |
+| 31 | Database (SQLite first, migration-friendly) | DONE (careerpulse schema + M15b per-user workspaces) |
+| 32 | REST API + OpenAPI | DONE (218 operations; E2E covers 85.8% of them) |
+| 33 | Dashboard pages | DONE 2026-09-23 (UI coverage audit) |
+| 34 | Human approval gates | DONE 2026-09-23 (M10 approval matrix) |
+| 35 | Cost control | DONE 2026-09-23 (M14 cost meter; per-user since 2026-09-24) |
+| 36 | Resilience | DONE + hardened 2026-09-24 (profile-save 400-not-500) |
+| 37 | Security (.env, no secrets committed) | DONE 2026-09-23 (tracked-source secret scan) |
+| 38 | Testing (incl. 4 critical tests) | DONE + 2026-09-24 user-journey E2E harness (26 scenarios, Critical #5 = s24) |
+| 39 | Observability (run_id etc.) | DONE 2026-09-23 (M14) |
+| 40 | CLI (same service layer as UI) | DONE 2026-09-23 (M13) |
+| 41 | Documentation set | DONE (CAPABILITIES.md, USER_GUIDE.md, per-milestone E2E reports, USER_JOURNEY_E2E_REPORT.md, E2E_RUN_STATUS.md) |
 | 42 | IMPLEMENTATION_PLAN.md milestones M1–M14 | DONE 2026-09-21 |
 | 43 | First execution = analysis ONLY, then STOP | DONE 2026-09-21 — STOPPED, awaiting approval |
 | 44 | Development rules enforcement | ONGOING |
@@ -369,9 +370,22 @@
     run against the ADMIN workspace only; per-user discovery/Run-Discovery-Now is
     per-user already. Live server runs with migration applied
     (`data/users/1-basil/` = Basil's real pool).
-- M15c Per-user pipeline features — PENDING
-- M15d Admin panel — PENDING
-- M15e Hardening + migration (Critical Test #5) — PENDING
+- M15c Per-user pipeline features — **PARTIAL 2026-09-24** (E2E-verified, Rule #11). Landed:
+  - Per-user **interactive** scrape/score: `routers/scraping.py#_task_target()` binds `POST /api/scrape`,
+    `/api/score`, `/api/rescore-failed`, `/api/rescore-all` and `/api/jobs/enrich` to the requesting user's
+    workspace DB + THEIR matcher (`_score_unscored(db, matcher=None)` in main.py). Before this, any user
+    pressing "Scrape now" filled the ADMIN's pool and graded with the ADMIN's resume.
+  - Per-user **LLM cost meter**: `ai_usage` gained a `ContextVar` request sink (`set_request_sink`) that
+    `workspace_middleware` binds to the user's DB per request — previously every user's spend landed in the
+    admin workspace, so `/api/analytics/monitoring` reported 0 calls/$0 for everyone else.
+  - Per-user **resume grading**: `routers/settings.py#upload_resume` resolves the AI client via
+    `ai_state_for(request)` and only mutates app-level state on the no-workspace legacy path (was: graded with
+    the admin's provider AND overwrote the app-level matcher with the caller's resume).
+  - **Bounded discovery**: `POST /api/discovery/run?passes=1..24` + `max_passes` on `run_discovery_cycle`.
+  - Still PENDING in M15c: per-user Gmail token, per-user scraper keys, per-user *scheduled* (interval) cycles.
+- M15d Admin panel — PENDING (user create/disable/reset already pulled forward into `routers/auth.py`)
+- M15e Hardening + migration (Critical Test #5) — PENDING (key encryption at rest pending; isolation now
+  continuously proven by E2E scenario s24_cross_user_isolation)
 
 ## 6. REFERENCE REPOSITORIES
 
@@ -433,3 +447,4 @@
 | 2026-09-22 | Session 16: **Basil-requested re-verification of M1–M5 E2E with his REAL resume — 98/98 passed (88 PASS · 10 SKIP · 0 FAIL).** Report: docs/E2E_MODULE_TEST_REPORT.md. Harness fix: resume selection now pinned to the DEFAULT resume (ORDER BY is_default DESC, id ASC) — the live DB had 2 rows and row 2 is a career-market-analysis PDF, not a resume. Server-ops lesson: detached `uv run` processes die silently with no output in this sandbox — launch the E2E suite via `.venv/bin/python` directly (plain background processes DO survive; verified with a `sleep 120` control). All 10 SKIPs are OpenRouter free-quota 429s (X-RateLimit-Remaining: 0, resets 00:00 UTC; OpenRouter now offers 1000 req/day for $10 credits). Everything non-AI verified green with Basil's real 4109-char resume: docx upload/extraction, evidence gate (fabricated_number + unsupported_skill blocked), all 6 countries + strategy round-trip, 4-adapter discovery cycle + live health probes, Critical #3 eligibility matrix + reason codes, feature-flag 404s. |
 | 2026-09-21 | Session 5: Basil hit "✗ No resume yet" after uploading. **Two product bugs fixed:** (1) POST /api/resume/upload never created a resumes row (only search_config) → GET /api/resumes empty → onboarding checklist stuck; now creates row (first upload = default, re-upload same filename updates in place). (2) .docx uploads stored as raw ZIP bytes (text began 'PK\u0003\u0004…') — added python-docx extraction incl. table cells + empty-doc 400. Cleaned corrupted binary resume_text from search_config. +2 regression tests (upload→list flow, docx extraction); test_api.py now 28 green. Basil must RE-UPLOAD his .docx (old upload was unrecoverable binary). |
 | 2026-09-23 | Session 26: **M1–M14 full E2E re-verification + job-source coverage expansion (batch 2) + detailed CAPABILITIES.md.** (1) **E2E re-verified: 178/178 PASS, 0 FAIL** (harness run from `root/`; the only SKIPs are the three AI sections — 8 scoring, 10 cover letter, 12 interview prep — deferred by Basil pending the DeepSeek key). The harness exercises stub adapters, not the scraper registry, so adding sources does not invalidate this run. (2) **Scraping coverage expanded again — 3 new live-verified sources, registry now 21:** `AshbyScraper` (ATS JSON, 20 verified boards, live 1,733 jobs with real salary bands parsed from structured compensation tiers), `LandingJobsScraper` (EU tech board, live 45 jobs; company recovered from the `/at/<slug>/` URL path because the API has no company field), `FourDayWeekScraper` (remote/4-day-week board, paginated, live 16). (3) **Bug found and fixed in my own new code before it shipped:** 4dayweek salaries are in cents but the hourly/monthly/weekly branches DIVIDED by periods-per-year instead of MULTIPLYING — $50/hr became 0 and $8k/mo became $666. Now `(cents/100) × periods_per_year`, with a parametrized test covering year/hour/month/week/zero/missing. (4) **New detailed capability document `docs/CAPABILITIES.md`** (~310 lines): every capability, all 21 sources, the 10-stage pipeline, matching/scoring layers, CRM, daily run, analytics, CLI, API surface, security model and honest limits (Indeed IP-blocked; AI paths unverified pending key). Headline numbers re-verified against the live app and corrected (206 API operations, 45 application tables + 10 sqlite-vec shadow, 906 backend tests). (5) **Tests: 137 scraper tests (+20 for Ashby/Landing.jobs/4dayweek incl. a registry guard asserting every new source is in ALL_SCRAPERS so the WeWorkRemotely orphan bug cannot recur), 906 backend (+20), 180 frontend green.** Server restarted live (pid 17360) with all 21 sources registered; /api/system/health 200. |
+| 2026-09-24 | Session 27: **REAL user-journey E2E — the running product driven top-to-bottom over HTTP; 5 real bugs found + fixed. 26/26 scenarios, 204/204 checks, 285 live HTTP calls, 85.8% API coverage.** Basil asked for proof through the REAL server (not in-process tests) as a brand-new user: create username/password → upload resume → AI analysis → scrapers → scoring → tailoring → cover letter, ≥15 scenarios, all outputs saved. Built `analysis/e2e_user_journey.py`: boots `uvicorn app.main:create_app --factory` with **auth ON and `testing=False`** against a throwaway data dir, creates an admin then a second user, and drives 26 scenarios over real HTTP (basil's REAL 4109-char resume rebuilt as a genuine .docx; **live DeepSeek `deepseek-flash`** read from the workspace DB). Every call recorded to `analysis/e2e_runs/<date>_<time>/` (api_calls.jsonl, scenarios.json, api_coverage.json, artifacts/, server.log, report.md) + `docs/USER_JOURNEY_E2E_REPORT.md`; status board `docs/E2E_RUN_STATUS.md`. **Bugs found only because it ran the real server: (1) resume upload graded with the APP-LEVEL AI client and overwrote the app-level matcher with the caller's resume — cross-user contamination (`routers/settings.py` now resolves via `ai_state_for`); (2) legacy scrape/AI-score/rescore always ran against `app.state.bg_db`=admin DB, so another user's "Scrape now" filled the ADMIN's pool and graded with the ADMIN's resume (new `_task_target()` binds scrape/score to the requesting user's workspace DB + their matcher; `_score_unscored(db, matcher=None)`); (3) the LLM cost meter had ONE global sink → every non-admin user's `/api/analytics/monitoring` read 0 calls/$0 (`ai_usage` gained a ContextVar request sink bound per request by workspace_middleware); (4) `POST /api/custom-qa`, `/api/work-history`, `/api/certifications` returned **500** on an unknown field name — an unhandled ValueError from the DB column guard (new `_save_profile_entry()` returns **400** for all 7 profile saves; 15 regression tests in `tests/test_profile_save_validation.py`); (5) discovery had no bounded mode (added `POST /api/discovery/run?passes=1..24` + `max_passes`). Also corrected two wrong expectations of MINE, not the product: `applied→offered` is allowed BY DESIGN (the real invariants are "cannot reach offered without applying" and "no terminal resurrection"), and `POST /api/scrape` returns 202/409. Harness covers Critical Test #4 (dedup outreach) and **Critical Test #5 (cross-user isolation, s24)** on the live server. Ops lesson: background jobs launched from a SYNC tool call are reaped when that call returns — use `setsid nohup … </dev/null &`. Full suite: **982 passed**; the only error was a pytest-timeout trip under serial load on `test_workspaces.py::test_jobs_are_isolated`, which passes alone (18s). |

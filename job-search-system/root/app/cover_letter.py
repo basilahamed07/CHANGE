@@ -58,8 +58,15 @@ async def generate_cover_letter(
             job_description=job_description,
             match_reasons="\n".join(f"- {r}" for r in (match_reasons or ["General match"])),
         )
-        raw = await client.chat(prompt, max_tokens=2048)
-        return parse_json_response(raw)
+        # JSON mode keeps the reply free of fences, and the budget is generous
+        # because reasoning models spend part of it on hidden thinking tokens
+        # (a small budget returned an EMPTY completion — observed live).
+        raw = await client.chat(prompt, max_tokens=6000, json_mode=True)
+        parsed = parse_json_response(raw)
+        if not (parsed.get("cover_letter") or "").strip():
+            return {"cover_letter": "",
+                    "error": "the model returned an empty cover_letter field"}
+        return parsed
     except Exception as e:
         logger.error(f"Cover letter generation failed: {e}")
-        return {"cover_letter": ""}
+        return {"cover_letter": "", "error": f"{type(e).__name__}: {e}"}

@@ -48,11 +48,18 @@ class Tailor:
                 match_reasons="\n".join(match_reasons),
                 keywords=", ".join(suggested_keywords),
             )
-            raw = await self.client.chat(prompt, max_tokens=4096)
+            # A full tailored resume + cover letter in one JSON object is a long
+            # completion; JSON mode + the provider's full output budget prevents
+            # the mid-string truncation that broke live DeepSeek runs.
+            raw = await self.client.chat(prompt, max_tokens=8000, json_mode=True)
             return parse_json_response(raw)
-        except Exception:
+        except Exception as e:
+            # Report the reason instead of silently returning the untailored
+            # resume — a bare empty cover letter hides quota, rate-limit and
+            # provider-truncation failures from the user and the logs.
             logger.exception("Tailoring failed")
             return {
                 "tailored_resume": self.resume_text,
                 "cover_letter": "",
+                "error": f"{type(e).__name__}: {e}",
             }

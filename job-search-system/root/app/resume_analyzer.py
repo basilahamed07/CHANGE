@@ -84,7 +84,10 @@ Rules:
 async def parse_resume_to_profile(client: AIClient, resume_text: str) -> dict:
     try:
         prompt = PROFILE_PARSE_PROMPT.format(resume=resume_text)
-        raw = await client.chat(prompt, max_tokens=2000)
+        # json_mode keeps the reply free of markdown fences, and the budget is
+        # generous because reasoning models spend part of it on hidden thinking
+        # (a small budget returned an empty completion — see AIOutputError).
+        raw = await client.chat(prompt, max_tokens=6000, json_mode=True)
         result = parse_json_response(raw)
         return result
     except Exception as e:
@@ -150,7 +153,7 @@ Guidelines:
 async def analyze_resume(client: AIClient, resume_text: str) -> dict:
     try:
         prompt = ANALYSIS_PROMPT.format(resume=resume_text)
-        raw = await client.chat(prompt, max_tokens=2048)
+        raw = await client.chat(prompt, max_tokens=6000, json_mode=True)
         result = parse_json_response(raw)
         return {
             "search_terms": result.get("search_terms", []),

@@ -20,5 +20,11 @@ node_modules/
 job-search-system/data/
 job-search-system/applications/
 
+# E2E harness OUTPUT — every run folder contains the real uploaded resume, the
+# tailored resume/cover letter and generated packages (personal content).
+# The harness itself (analysis/e2e_user_journey.py) IS versioned; its output is not.
+job-search-system/analysis/e2e_runs/
+
 # Chat transcripts exported by the agent client
 freebuff-chat-*.md
+*freebuff*.txt

@@ -76,10 +76,32 @@ async def _mirror_scoring_progress(app, progress: dict) -> None:
         raise
 
 
-async def _scrape_and_score(app, task_id: str) -> None:
+async def _task_target(request: Request):
+    """The DB + matcher a background pipeline must run against (M15c).
+
+    An authenticated request's scrape/score run has to operate on THAT user's
+    workspace, never the app-level (admin) connection. Before this, every user
+    who pressed "Scrape now" filled the ADMIN's pool and graded with the ADMIN's
+    resume. Falls back to the app defaults when no workspace is bound (testing
+    or unauthenticated callers), which keeps the pre-M15c tests unchanged.
+    """
+    app = request.app
+    ws = getattr(request.state, "workspace", None)
+    db = ws.db if ws is not None else (
+        getattr(app.state, "bg_db", None) or app.state.db)
+    matcher = None
+    if ws is not None:
+        try:
+            matcher = (await app.state.ai_state_for(request)).get("matcher")
+        except Exception:
+            logger.exception("per-user matcher resolution failed")
+    return db, matcher
+
+
+async def _scrape_and_score(app, task_id: str, db=None, matcher=None) -> None:
     """Phase pipeline. Router owns phase/active — scheduler only updates counters."""
     progress = app.state.scrape_progress
-    bg_db = app.state.bg_db
+    bg_db = db if db is not None else app.state.bg_db
     mirror_task: asyncio.Task | None = None
     try:
         config = await bg_db.get_search_config()
@@ -119,7 +141,7 @@ async def _scrape_and_score(app, task_id: str) -> None:
                 )
                 try:
                     await asyncio.wait_for(
-                        app.state.score_unscored(bg_db), timeout=1800
+                        app.state.score_unscored(bg_db, matcher), timeout=1800
                     )
                 finally:
                     if mirror_task and not mirror_task.done():
@@ -255,8 +277,10 @@ async def trigger_scrape(request: Request):
         )
 
     task_id = uuid.uuid4().hex
+    db, matcher = await _task_target(request)
     app.state.scrape_progress = _fresh_state(task_id)
-    app.state.scrape_task = asyncio.create_task(_scrape_and_score(app, task_id))
+    app.state.scrape_task = asyncio.create_task(
+        _scrape_and_score(app, task_id, db, matcher))
     return JSONResponse(
         {"task_id": task_id, "status": "started"},
         status_code=202,
@@ -302,8 +326,8 @@ async def scrape_progress(request: Request):
 
 @router.post("/jobs/enrich")
 async def enrich_jobs(request: Request):
-    bg_db = getattr(request.app.state, "bg_db", _db(request))
-    enriched = await run_enrichment_cycle(bg_db, limit=50)
+    # M15c: _db(request) is the requesting user's workspace DB when authenticated.
+    enriched = await run_enrichment_cycle(_db(request), limit=50)
     return {"enriched": enriched}
 
 
@@ -313,10 +337,12 @@ async def trigger_score(request: Request):
     if not getattr(app.state, "ai_client", None):
         return {"status": "skipped", "reason": "No AI provider configured. Go to Settings → AI to set one up."}
 
+    db, matcher = await _task_target(request)
+
     async def _run_scoring():
         try:
             await asyncio.wait_for(
-                app.state.score_unscored(app.state.bg_db), timeout=1800
+                app.state.score_unscored(db, matcher), timeout=1800
             )
         except asyncio.TimeoutError:
             logger.error("Background scoring timed out after 30 minutes")
@@ -339,13 +365,14 @@ async def score_progress(request: Request):
 async def rescore_failed(request: Request):
     """Clear error scores (score=0 from transient failures) and trigger rescoring."""
     app = request.app
-    bg_db = getattr(app.state, "bg_db", app.state.db)
+    bg_db = _db(request)
     cleared = await bg_db.clear_failed_scores()
+    db, matcher = await _task_target(request)
     if cleared and getattr(app.state, "ai_client", None):
         async def _run_rescore():
             try:
                 await asyncio.wait_for(
-                    app.state.score_unscored(bg_db), timeout=1800
+                    app.state.score_unscored(db, matcher), timeout=1800
                 )
             except asyncio.TimeoutError:
                 logger.error("Background rescoring timed out")
@@ -359,14 +386,15 @@ async def rescore_failed(request: Request):
 async def rescore_all(request: Request):
     """Clear all scores and trigger full rescoring with current rubric."""
     app = request.app
-    bg_db = getattr(app.state, "bg_db", app.state.db)
+    bg_db = _db(request)
     cleared = await bg_db.clear_all_scores()
+    db, matcher = await _task_target(request)
     has_ai = getattr(app.state, "ai_client", None) is not None
     if cleared and has_ai:
         async def _run_rescore():
             try:
                 await asyncio.wait_for(
-                    app.state.score_unscored(bg_db), timeout=3600
+                    app.state.score_unscored(db, matcher), timeout=3600
                 )
             except asyncio.TimeoutError:
                 logger.error("Full rescoring timed out after 1h")

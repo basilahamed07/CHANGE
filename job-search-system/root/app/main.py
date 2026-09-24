@@ -440,9 +440,12 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
             notif = {"id": notif_id, "job_id": job_id, "type": "high_score", "title": title, "message": message, "read": 0}
             await _broadcast_notification(notif)
 
-    async def _score_unscored(db):
+    async def _score_unscored(db, matcher=None):
+        # M15c: callers that own a per-user workspace pass THAT user's matcher so
+        # background scoring never grades one user's jobs with another's profile.
+        # Default (no workspace bound) stays the app-level matcher.
         async with app.state.scoring_lock:
-            matcher = app.state.matcher
+            matcher = matcher or app.state.matcher
             if not matcher:
                 logger.warning("Matcher not available, skipping scoring")
                 return

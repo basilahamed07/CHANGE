@@ -39,14 +39,44 @@ async def prepare_application(request: Request, job_id: int):
     suggested_keywords = score["suggested_keywords"] if score else []
 
     # --- M2: EvidenceChecker hard gate (fail-closed) ------------------------
-    store = getattr(request.app.state, "evidence_store", None)
-    checker = getattr(request.app.state, "evidence_checker", None)
+    # Resolve through ai_state_for so the gate uses THIS user's evidence corpus
+    # (M15b workspaces) — reading app.state directly would grade every user
+    # against the admin's claims.
+    store = ai.get("evidence_store") or getattr(request.app.state, "evidence_store", None)
+    checker = ai.get("evidence_checker") or getattr(request.app.state, "evidence_checker", None)
     if store is None or checker is None:
         raise HTTPException(
             503,
             "Evidence store unavailable — generation is blocked (fail-closed). "
             "Check data/profile/ and restart.",
         )
+
+    async def _recover_evidence() -> bool:
+        """Rebuild the VERIFIED corpus from this workspace's own stored resume.
+
+        Zero AI calls. Recovers users whose resume was uploaded before
+        resume-driven autofill existed (or while the AI was unavailable):
+        without this their corpus is empty and EVERY generated line is rejected
+        forever. Never touches DISPUTED/DO_NOT_USE claims.
+        """
+        nonlocal store, checker
+        try:
+            from app.evidence_backfill import backfill_workspace
+            summary = await backfill_workspace(db, store)
+        except Exception:
+            logger.exception("Evidence backfill failed for job %s", job_id)
+            return False
+        if not summary or summary.get("skipped"):
+            return False
+        from app.evidence_checker import EvidenceChecker
+        checker = EvidenceChecker(store.verified_values())
+        request.state._evidence_checker = checker
+        await db.add_event(
+            job_id, "evidence_backfilled",
+            f"Verified evidence rebuilt from the stored resume: {summary}",
+        )
+        logger.info("Evidence backfill before generation (job %s): %s", job_id, summary)
+        return True
 
     async def _checked_prepare() -> tuple[dict, object]:
         result = await tailor.prepare(
@@ -62,6 +92,10 @@ async def prepare_application(request: Request, job_id: int):
         return result, check
 
     result, check = await _checked_prepare()
+    if result.get("error"):
+        # Provider-side failure (quota/rate limit/truncated output). Surface it
+        # instead of letting the gate report a confusing "unsupported claims".
+        raise HTTPException(502, f"AI generation failed — {result['error']}")
     if not check.ok:
         offenders = [f["type"] for f in check.failures]
         logger.warning(
@@ -72,8 +106,14 @@ async def prepare_application(request: Request, job_id: int):
             job_id, "evidence_check_failed",
             f"Offending claims: {offenders}; regenerating without them",
         )
-        # One regeneration attempt; a persistent failure is surfaced, never saved as VERIFIED-safe.
-        result, check = await _checked_prepare()
+        # A thin corpus is the usual cause on a fresh workspace: rebuild it from
+        # the user's own stored resume (no AI), then judge the output again.
+        if len(store.verified_values()) == 0:
+            if await _recover_evidence():
+                result, check = await _checked_prepare()
+        if not check.ok:
+            # One regeneration attempt; a persistent failure is surfaced, never saved as VERIFIED-safe.
+            result, check = await _checked_prepare()
     if not check.ok:
         await db.add_event(
             job_id, "evidence_check_failed_persist",
@@ -86,9 +126,11 @@ async def prepare_application(request: Request, job_id: int):
                 "failures": check.failures,
                 "message": (
                     "Generated resume contains claims unsupported by verified "
-                    "evidence. Nothing was saved. Fix the profile evidence or "
-                    "retry generation."
+                    "evidence. Nothing was saved. Mark the relevant skills/roles "
+                    "VERIFIED in Settings → Evidence (or re-upload your resume, "
+                    "which verifies them automatically), then retry."
                 ),
+                "verified_claims": len(store.verified_values()),
             },
         )
     # --- end gate -----------------------------------------------------------
@@ -202,7 +244,8 @@ async def download_cover_letter_docx(request: Request, job_id: int):
 @router.post("/jobs/{job_id}/generate-cover-letter")
 async def generate_cover_letter_endpoint(request: Request, job_id: int):
     db = _db(request)
-    client = getattr(request.app.state, "ai_client", None)
+    ai = await request.app.state.ai_state_for(request)
+    client = ai.get("ai_client") or getattr(request.app.state, "ai_client", None)
     if not client:
         raise HTTPException(503, "No AI provider configured. Go to Settings → AI to set one up.")
     job = await db.get_job(job_id)
@@ -222,10 +265,11 @@ async def generate_cover_letter_endpoint(request: Request, job_id: int):
         profile=profile, match_reasons=match_reasons,
     )
     if not (result.get("cover_letter") or "").strip():
-        # generate_cover_letter swallows provider errors (quota, network, parse);
+        # generate_cover_letter reports provider errors instead of raising;
         # surfacing an empty letter as success would silently mislead the user.
-        raise HTTPException(502, "Cover letter generation failed — AI provider error "
-                                  "(quota exhausted, rate limited, or invalid response). Try again later.")
+        detail = result.get("error") or "the provider returned no text"
+        logger.error("Cover letter for job %s failed: %s", job_id, detail)
+        raise HTTPException(502, f"Cover letter generation failed — {detail}")
     app_record = await db.get_application(job_id)
     if app_record:
         await db.update_application(app_record["id"], cover_letter=result["cover_letter"])

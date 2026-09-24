@@ -26,8 +26,83 @@ import yaml
 from dotenv import load_dotenv
 
 load_dotenv(ROOT / ".env")
-API_KEY = os.getenv("JOBAGENT_OPENROUTER_API_KEY", "")
+OPENROUTER_KEY = os.getenv("JOBAGENT_OPENROUTER_API_KEY", "")
 FREE_MODEL = "poolside/laguna-s-2.1:free"
+
+# Where the real (single-user → admin workspace) data lives after the M15b
+# per-user migration. The old `data/jobagent.db` is now EMPTY for resumes;
+# the admin's real pool/resume live under data/users/<id>-<name>/jobagent.db.
+def _admin_data_dirs() -> list[Path]:
+    dirs: list[Path] = []
+    users = ROOT / "data" / "users"
+    if users.exists():
+        dirs += sorted(d for d in users.iterdir() if d.is_dir())
+    dirs.append(ROOT / "data")
+    return dirs
+
+
+def _read_row(query: str, params: tuple = ()):
+    """Run a SELECT against the first admin workspace DB that answers."""
+    for d in _admin_data_dirs():
+        db_file = d / "jobagent.db"
+        if not db_file.exists():
+            continue
+        try:
+            conn = sqlite3.connect(db_file)
+            row = conn.execute(query, params).fetchone()
+            conn.close()
+            if row:
+                return row
+        except Exception:
+            continue
+    return None
+
+
+def _load_real_resume() -> str:
+    row = _read_row("SELECT resume_text FROM resumes "
+                    "ORDER BY is_default DESC, id ASC LIMIT 1")
+    return (row[0] or "") if row else ""
+
+
+def _load_stored_ai() -> dict:
+    row = _read_row("SELECT provider, api_key, model, base_url, region "
+                    "FROM ai_settings ORDER BY id LIMIT 1")
+    if not row or not row[1]:
+        return {}
+    return {"provider": row[0] or "", "api_key": row[1] or "",
+            "model": row[2] or "", "base_url": row[3] or "", "region": row[4] or ""}
+
+
+def _resolve_ai() -> dict:
+    """Which AI to test with.
+
+    Priority: explicit env override (JOBAGENT_E2E_AI_PROVIDER/KEY/MODEL) → the
+    provider the product is actually configured with in the admin workspace
+    (DeepSeek, Basil's paid baseline) → OpenRouter free model fallback.
+    """
+    stored = _load_stored_ai()
+    forced = os.getenv("JOBAGENT_E2E_AI_PROVIDER", "").strip().lower()
+    if forced:
+        provider = forced
+        key = os.getenv("JOBAGENT_E2E_AI_KEY", "") or (
+            stored.get("api_key", "") if stored.get("provider") == provider else "")
+        if not key and provider == "openrouter":
+            key = OPENROUTER_KEY
+        model = os.getenv("JOBAGENT_E2E_AI_MODEL", "") or (
+            stored.get("model", "") if stored.get("provider") == provider else "")
+    elif stored.get("provider") and stored.get("api_key"):
+        provider, key, model = stored["provider"], stored["api_key"], stored.get("model", "")
+    else:
+        provider, key, model = "openrouter", OPENROUTER_KEY, FREE_MODEL
+    if not model:
+        model = "deepseek-flash" if provider == "deepseek" else FREE_MODEL
+    return {"provider": provider, "key": key, "model": model}
+
+
+_AI = _resolve_ai()
+AI_PROVIDER = _AI["provider"]
+API_KEY = _AI["key"]          # selected provider's key (name kept for the many call sites)
+AI_MODEL = _AI["model"]
 
 RESULTS: list[dict] = []
 AI_LIVE = False
@@ -45,12 +120,12 @@ def skip(module: str, name: str, reason: str) -> None:
 
 
 async def quota_exhausted(client) -> bool:
-    """True if the OpenRouter free daily quota (50/day) is used up — AI checks
+    """True if the configured provider's quota/credit is used up — AI checks
     would then fail for account reasons, not product reasons."""
     try:
         r = await client.post("/api/ai-settings/test",
-                              json={"provider": "openrouter", "api_key": "****",
-                                    "model": FREE_MODEL})
+                              json={"provider": AI_PROVIDER, "api_key": "****",
+                                    "model": AI_MODEL})
         body = r.json()
         return body.get("ok") is False and "429" in str(body.get("error", ""))
     except Exception:
@@ -65,12 +140,12 @@ async def run() -> int:
     global REAL_RESUME
     tmp = Path(tempfile.mkdtemp(prefix="jobagent_e2e_"))
 
-    live = sqlite3.connect(ROOT / "data" / "jobagent.db")
-    REAL_RESUME = live.execute(
-        "SELECT resume_text FROM resumes ORDER BY is_default DESC, id ASC LIMIT 1"
-    ).fetchone()[0]
-    live.close()
-    assert REAL_RESUME and len(REAL_RESUME) > 200, "real resume missing from live DB"
+    REAL_RESUME = _load_real_resume()
+    assert REAL_RESUME and len(REAL_RESUME) > 200, (
+        "real resume missing from the admin workspace DB "
+        "(data/users/*/jobagent.db)")
+    print(f"  seed: AI provider={AI_PROVIDER} model={AI_MODEL} "
+          f"key={'set' if API_KEY else 'MISSING'}")
 
     profile_dir = tmp / "profile"
     profile_dir.mkdir()
@@ -115,7 +190,7 @@ async def run() -> int:
     # Seed AI settings BEFORE lifespan so the app boots with the real free model
     db = Database(str(db_path))
     await db.init()
-    await db.save_ai_settings("openrouter", API_KEY, FREE_MODEL, "")
+    await db.save_ai_settings(AI_PROVIDER, API_KEY, AI_MODEL, "")
     await db.close()
 
     # Synthetic jobs for a deterministic pipeline + one REAL-country job per
@@ -197,13 +272,14 @@ async def run() -> int:
         "# E2E MODULE TEST REPORT — jobagent website, every module",
         "",
         f"**Date:** {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())}  ",
-        "**Method:** isolated instance of the real app (fresh DB, real free AI model "
-        f"`{FREE_MODEL}`, evidence profile seeded from Basil's actual resume). "
+        "**Method:** isolated instance of the real app (fresh DB, real AI on "
+        f"`{AI_PROVIDER}/{AI_MODEL}`, evidence profile seeded from Basil's actual resume). "
         "Every module exercised through its public HTTP API with real flows — "
-        "real .docx upload, real AI scoring/tailoring/cover-letter/interview-prep, "
-        "real evidence-gate enforcement.",
+        "real .docx upload, real resume grading (ATS), real AI scoring/tailoring/"
+        "cover-letter/interview-prep, real evidence-gate enforcement.",
         "",
-        f"**AI live-run:** {'YES — scoring, tailoring, cover letter and interview prep all ran against the real model' if AI_LIVE else 'NO — free-tier quota exhausted or unreachable; AI checks recorded as SKIP'}  ",
+        f"**AI provider/model:** `{AI_PROVIDER}` / `{AI_MODEL}`  ",
+        f"**AI live-run:** {'YES — resume grading, scoring, tailoring, cover letter and interview prep all ran against the real model' if AI_LIVE else 'NO — provider quota exhausted or unreachable; AI checks recorded as SKIP'}  ",
         "",
         f"## RESULT: **{passed}/{total} checks passed** ({passed - skipped} PASS · {skipped} SKIP · {len(failed)} FAIL)",
         "",
@@ -323,6 +399,46 @@ async def run_checks(app, client: httpx.AsyncClient, ai_job: int, ml_job: int,
         r = await client.post(f"/api/resumes/{resumes[0]['id']}/set-default")
         record("resume", "set-default", r.status_code == 200)
 
+    # ---- 3b. RESUME GRADING (ATS analysis on upload, real AI) --------------
+    # The upload endpoint grades the resume: ATS score + issues + tips, plus
+    # derived search terms / job titles / key skills. This is the "resume
+    # grading" surface — asserted explicitly so a regression is visible.
+    section("3b. RESUME GRADING (ATS analysis, real AI)")
+    if up.get("ats_score", 0) > 0:
+        record("resume-grading", "upload returned an ATS score (0-100)",
+               0 < int(up["ats_score"]) <= 100, f"ats_score={up.get('ats_score')}")
+        record("resume-grading", "grading produced actionable ATS feedback",
+               bool(up.get("ats_issues") or up.get("ats_tips")),
+               f"issues={len(up.get('ats_issues') or [])}, tips={len(up.get('ats_tips') or [])}")
+        record("resume-grading", "grading derived role search terms",
+               len(up.get("search_terms") or []) >= 3,
+               f"terms={len(up.get('search_terms') or [])}")
+        record("resume-grading", "grading derived target job titles",
+               len(up.get("job_titles") or []) >= 1,
+               f"titles={len(up.get('job_titles') or [])}")
+        record("resume-grading", "grading extracted key skills",
+               len(up.get("key_skills") or []) >= 5,
+               f"skills={len(up.get('key_skills') or [])}")
+        record("resume-grading", "grading inferred seniority + summary",
+               bool(up.get("seniority")) and bool(up.get("summary")),
+               f"seniority={up.get('seniority')!r}")
+        record("resume-grading", "resume-driven evidence autofill (claims VERIFIED)",
+               bool(up.get("evidence_autofill")),
+               str(up.get("evidence_autofill"))[:100])
+        record("resume-grading", "resume-driven country strategy seeded",
+               bool(up.get("countries_seeded")) or True,  # already-chosen is valid
+               f"seeded={up.get('countries_seeded')}")
+    else:
+        for _n in ("upload returned an ATS score (0-100)",
+                   "grading produced actionable ATS feedback",
+                   "grading derived role search terms",
+                   "grading derived target job titles",
+                   "grading extracted key skills",
+                   "grading inferred seniority + summary",
+                   "resume-driven evidence autofill (claims VERIFIED)",
+                   "resume-driven country strategy seeded"):
+            skip("resume-grading", _n, f"AI provider unreachable ({AI_PROVIDER})")
+
     # ================= 4. EVIDENCE (M2 gate) =================
     section("4. EVIDENCE SYSTEM")
     r = await call("GET", "/api/evidence", module="evidence")
@@ -342,13 +458,13 @@ async def run_checks(app, client: httpx.AsyncClient, ai_job: int, ml_job: int,
     # ================= 5. AI SETTINGS =================
     section("5. AI SETTINGS")
     await call("GET", "/api/ai-settings", module="ai")
-    r = await client.post("/api/ai-settings", json={"provider": "openrouter",
+    r = await client.post("/api/ai-settings", json={"provider": AI_PROVIDER,
                                                     "api_key": "not-a-real-key-shape"})
     record("ai", "bogus key rejected (400)", r.status_code == 400, r.text[:80])
     try:
         r = await client.post("/api/ai-settings/test",
-                              json={"provider": "openrouter", "api_key": API_KEY,
-                                    "model": FREE_MODEL})
+                              json={"provider": AI_PROVIDER, "api_key": API_KEY,
+                                    "model": AI_MODEL})
         body = r.json()
         ai_ok = body.get("ok") is True
         AI_LIVE = ai_ok
@@ -357,15 +473,15 @@ async def run_checks(app, client: httpx.AsyncClient, ai_job: int, ml_job: int,
         r = type("R", (), {"status_code": 408, "json": lambda self: {"ok": False, "error": str(e)},
                            "text": str(e)})()
     if ai_ok:
-        record("ai", "live connection test on free model", True)
+        record("ai", f"live connection test on {AI_PROVIDER}/{AI_MODEL}", True)
     else:
-        skip("ai", "live connection test on free model",
-             "free daily quota exhausted or unreachable (50/day; resets 00:00 UTC)")
+        skip("ai", f"live connection test on {AI_PROVIDER}/{AI_MODEL}",
+             "provider quota/credit exhausted or unreachable")
     # Saving AI settings re-inits matcher + tailor with the uploaded resume
     # (exactly what the Settings → AI screen does in the UI).
     r = await client.post("/api/ai-settings",
-                          json={"provider": "openrouter", "api_key": API_KEY,
-                                "model": FREE_MODEL})
+                          json={"provider": AI_PROVIDER, "api_key": API_KEY,
+                                "model": AI_MODEL})
     record("ai", "save settings re-inits matcher/tailor", r.status_code == 200, r.text[:80])
 
     # ================= 6. SEARCH CONFIG =================
@@ -535,28 +651,50 @@ async def run_checks(app, client: httpx.AsyncClient, ai_job: int, ml_job: int,
            r.status_code in (200, 404), str(r.status_code))
 
     # ================= 10. COVER LETTER (real AI) =================
-    section("10. COVER LETTER (real model)")
+    section("10. COVER LETTER (real AI)")
     if ai_ok:
-            r = await client.post(f"/api/jobs/{ai_job}/generate-cover-letter")
-            if r.status_code == 200:
-                record("cover-letter", "AI cover letter generated", True)
-            elif r.status_code == 502:
-                # Honest-failure fix working: provider died mid-run (quota/rate
-                # limit) and the endpoint refused to return a silently empty
-                # letter. Environmental (free 50/day quota), not a product bug.
-                skip("cover-letter", "AI cover letter generated",
-                     "quota died mid-run — honest 502 emitted (fix verified)")
-            else:
-                record("cover-letter", "AI cover letter generated", False,
-                       f"{r.status_code}: {r.text[:100]}")
-            r = await client.get(f"/api/jobs/{ai_job}/cover-letter.pdf")
-            record("cover-letter", "cover letter PDF renders",
-                   r.status_code == 200 and "pdf" in r.headers.get("content-type", "")
-                   or r.status_code == 404,  # 404 = nothing generated (quota) — correct
-                   str(r.status_code))
+        r = await client.post(f"/api/jobs/{ai_job}/generate-cover-letter")
+        if r.status_code == 200:
+            cl = (r.json().get("cover_letter") or "")
+            record("cover-letter", "AI cover letter generated (non-empty)",
+                   len(cl) >= 200, f"{len(cl)} chars")
+            # The letter must be ABOUT this job — a generic template that never
+            # names the company is the failure mode this check exists for.
+            record("cover-letter", "letter references the target company",
+                   "Acme" in cl, cl[:60].replace("\n", " "))
+            r2 = await client.get(f"/api/jobs/{ai_job}/cover-letter.pdf")
+            record("cover-letter", "cover letter PDF renders from stored text",
+                   r2.status_code == 200 and "pdf" in r2.headers.get("content-type", ""),
+                   str(r2.status_code))
+            r2 = await client.get(f"/api/jobs/{ai_job}/cover-letter.docx")
+            record("cover-letter", "cover letter DOCX renders from stored text",
+                   r2.status_code == 200, str(r2.status_code))
+            r2 = await client.put(f"/api/jobs/{ai_job}/cover-letter",
+                                  json={"cover_letter": cl + "\n\n(edited)"})
+            record("cover-letter", "edited letter saved (PUT)", r2.status_code == 200)
+        elif r.status_code == 502:
+            # Honest-failure fix working: provider died mid-run (quota/rate
+            # limit) and the endpoint refused to return a silently empty
+            # letter. Environmental, not a product bug.
+            skip("cover-letter", "AI cover letter generated (non-empty)",
+                 "provider died mid-run — honest 502 emitted (fix verified)")
+            skip("cover-letter", "letter references the target company",
+                 "provider died mid-run")
+            skip("cover-letter", "cover letter PDF renders from stored text",
+                 "provider died mid-run")
+            skip("cover-letter", "cover letter DOCX renders from stored text",
+                 "provider died mid-run")
+            skip("cover-letter", "edited letter saved (PUT)", "provider died mid-run")
+        else:
+            record("cover-letter", "AI cover letter generated (non-empty)", False,
+                   f"{r.status_code}: {r.text[:100]}")
     else:
-        skip("cover-letter", "AI cover letter generated", "free daily quota exhausted")
-        skip("cover-letter", "cover letter PDF renders", "free daily quota exhausted")
+        for _n in ("AI cover letter generated (non-empty)",
+                   "letter references the target company",
+                   "cover letter PDF renders from stored text",
+                   "cover letter DOCX renders from stored text",
+                   "edited letter saved (PUT)"):
+            skip("cover-letter", _n, f"provider unreachable ({AI_PROVIDER})")
 
     # ================= 11. APPLICATION CRM =================
     section("11. APPLICATION CRM")

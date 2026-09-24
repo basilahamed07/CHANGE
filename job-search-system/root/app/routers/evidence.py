@@ -18,6 +18,28 @@ def _get_store(request: Request):
     return store
 
 
+@router.post("/evidence/backfill")
+async def backfill_evidence(request: Request):
+    """Populate VERIFIED evidence from data already stored in this workspace
+    (resume text + analysed skills + parsed profile). ZERO AI calls.
+
+    Use this when resume generation reports unsupported claims: it turns the
+    user's own already-uploaded resume into the verified corpus.
+    """
+    from app.evidence_backfill import backfill_workspace
+    store = _get_store(request)
+    result = await backfill_workspace(_db(request), store)
+    # Rebuild the request-scoped checker so the new corpus applies immediately.
+    if store is not None:
+        try:
+            request.state._evidence_checker = EvidenceChecker(store.verified_values())
+            request.app.state.evidence_checker = EvidenceChecker(store.verified_values())
+        except Exception:
+            pass
+    return {"ok": True, "summary": result,
+            "verified_claims": len(store.verified_values()) if store else 0}
+
+
 @router.get("/evidence")
 async def list_evidence(request: Request, status: str | None = None):
     store = _get_store(request)

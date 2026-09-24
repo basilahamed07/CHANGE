@@ -27,10 +27,14 @@ MAX_LISTINGS_PER_PASS = 200            # ingest cap per pass
 
 
 async def run_discovery_cycle(db, registry, all_adapters, ai_client=None,
-                              progress: dict | None = None) -> dict:
+                              progress: dict | None = None,
+                              max_passes: int | None = None) -> dict:
     """One orchestrated discovery pass across enabled countries × search terms.
 
-    Returns machine-readable telemetry for the API/report.
+    `max_passes` bounds the adapter-passes consumed this cycle (1..24). The UI
+    and CLI use it to run a short, predictable sweep instead of always burning
+    the full budget; omit it for the default cap. Returns machine-readable
+    telemetry for the API/report.
     """
     from app.title_filter import is_relevant_title
     from app.location_classifier import classify_location_rule_based
@@ -51,7 +55,11 @@ async def run_discovery_cycle(db, registry, all_adapters, ai_client=None,
         "duplicates_seen": 0,
         "budget_exhausted": False,
     }
-    budget = MAX_REQUEST_PASSES_PER_CYCLE
+    if max_passes is None:
+        budget = MAX_REQUEST_PASSES_PER_CYCLE
+    else:
+        budget = max(1, min(int(max_passes), MAX_REQUEST_PASSES_PER_CYCLE))
+    telemetry["pass_budget"] = budget
     seen_hashes: set[str] = set()
 
     for country in countries:

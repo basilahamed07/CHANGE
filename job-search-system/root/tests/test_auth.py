@@ -285,3 +285,119 @@ async def test_set_password_destroys_all_sessions(auth_app):
     assert await store.resolve_session(token) is not None
     await store.set_password(user["id"], "password-2")
     assert await store.resolve_session(token) is None
+
+
+# ------------------------------------------------------- admin user management
+
+async def _create_second_user(client, username="alice", password="alice-pass-123",
+                              role="user"):
+    r = await client.post("/api/auth/users",
+                          json={"username": username, "password": password,
+                                "role": role})
+    assert r.status_code == 200, r.text
+    return r.json()["user"]
+
+
+@pytest.mark.asyncio
+async def test_admin_can_create_user(auth_client):
+    await _bootstrap_admin(auth_client)
+    user = await _create_second_user(auth_client)
+    assert user["username"] == "alice"
+    assert user["role"] == "user"
+    assert bool(user["is_active"]) is True
+    # The new user can actually log in.
+    r = await _login(auth_client, username="alice", password="alice-pass-123")
+    assert r.status_code == 200
+
+
+def _fresh_client(app):
+    from httpx import ASGITransport, AsyncClient
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+@pytest.mark.asyncio
+async def test_non_admin_cannot_manage_users(auth_app, auth_client):
+    await _bootstrap_admin(auth_client)
+    await _create_second_user(auth_client)
+    # Alice's own session:
+    async with _fresh_client(auth_app) as alice:
+        await _login(alice, username="alice", password="alice-pass-123")
+        r = await alice.get("/api/auth/users")
+        assert r.status_code == 403
+        r = await alice.post("/api/auth/users",
+                             json={"username": "mallory", "password": "mallory-99"})
+        assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_created_user_is_isolated_session(auth_app, auth_client):
+    """The admin's cookie must not leak into a new user's client."""
+    await _bootstrap_admin(auth_client)
+    await _create_second_user(auth_client)
+    async with _fresh_client(auth_app) as alice:
+        r = await _login(alice, username="alice", password="alice-pass-123")
+        me = (await alice.get("/api/auth/me")).json()["user"]
+        assert me["username"] == "alice"
+        assert me["role"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_disable_self(auth_client):
+    await _bootstrap_admin(auth_client)
+    me = (await auth_client.get("/api/auth/me")).json()["user"]
+    r = await auth_client.post(f"/api/auth/users/{me['id']}/disable")
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_disable_user_kills_sessions_and_blocks_login(auth_app, auth_client):
+    await _bootstrap_admin(auth_client)
+    user = await _create_second_user(auth_client)
+    async with _fresh_client(auth_app) as alice:
+        await _login(alice, username="alice", password="alice-pass-123")
+        assert (await alice.get("/api/auth/me")).status_code == 200
+        # Admin disables Alice:
+        r = await auth_client.post(f"/api/auth/users/{user['id']}/disable")
+        assert r.status_code == 200
+        # Alice's live session is destroyed:
+        assert (await alice.get("/api/auth/me")).status_code == 401
+        # And she cannot log back in:
+        r = await _login(alice, username="alice", password="alice-pass-123")
+        assert r.status_code == 401
+    # Re-enable → login works again:
+    r = await auth_client.post(f"/api/auth/users/{user['id']}/enable")
+    assert r.status_code == 200
+    async with _fresh_client(auth_app) as alice2:
+        assert (await _login(alice2, username="alice",
+                             password="alice-pass-123")).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_admin_reset_password(auth_app, auth_client):
+    await _bootstrap_admin(auth_client)
+    user = await _create_second_user(auth_client)
+    r = await auth_client.post(f"/api/auth/users/{user['id']}/reset-password",
+                               json={"new_password": "brand-new-pass-1"})
+    assert r.status_code == 200
+    # Old password dead, new one works:
+    async with _fresh_client(auth_app) as c:
+        assert (await _login(c, username="alice",
+                             password="alice-pass-123")).status_code == 401
+        assert (await _login(c, username="alice",
+                             password="brand-new-pass-1")).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_duplicate_username_rejected_via_api(auth_client):
+    await _bootstrap_admin(auth_client)
+    await _create_second_user(auth_client)
+    r = await auth_client.post("/api/auth/users",
+                               json={"username": "alice",
+                                     "password": "other-pass-123"})
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_user_management_requires_auth(auth_client):
+    r = await auth_client.get("/api/auth/users")
+    assert r.status_code == 401

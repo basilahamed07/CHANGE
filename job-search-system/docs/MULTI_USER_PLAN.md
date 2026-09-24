@@ -101,6 +101,14 @@ scheduler/bootstrap only.
 
 ## 4. Milestones (each ends with tests + E2E + report, Golden Rule #11)
 
+> **Progress 2026-09-24:** M15a ✅ · M15b ✅ · **M15c partial** — per-user
+> *interactive* discovery, scrape, AI scoring/rescore and resume grading now bind
+> to the requesting user's workspace, and the **LLM cost meter is per-user**.
+> Still open in M15c: per-user **Gmail token**, per-user **scraper keys**, and the
+> per-user **scheduled** (interval) cycles. Cross-user isolation is continuously
+> proven by E2E scenario `s24_cross_user_isolation`. Evidence:
+> `docs/E2E_RUN_STATUS.md` + `analysis/e2e_runs/<date>_<time>/`.
+
 ### M15a — Auth foundation
 - `data/system.db` with `users` + `sessions`; scrypt hashing; login/logout/change-password endpoints.
 - First-run bootstrap screen (create admin) — only shown when no users exist.

@@ -14,6 +14,7 @@ Design:
 
 import logging
 from collections import defaultdict
+from contextvars import ContextVar
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -128,11 +129,27 @@ _buffer: list[dict] = []
 _db_sink = None            # async callable(dict) registered by main.py
 _counters: dict[str, int] = defaultdict(int)
 
+# M15c: per-request sink. In a multi-user deploy every AI call made while
+# serving user X must be billed to X's workspace DB — the global sink always
+# pointed at the admin's. The workspace middleware sets this per request; the
+# value flows into any task the request spawns (asyncio copies the context).
+_request_sink: ContextVar = ContextVar("ai_usage_request_sink", default=None)
+
 
 def set_db_sink(sink) -> None:
-    """Register the persistence hook (app.database.record_ai_usage)."""
+    """Register the process-wide persistence hook (the admin/legacy DB)."""
     global _db_sink
     _db_sink = sink
+
+
+def set_request_sink(sink) -> None:
+    """Bind usage recording to ONE workspace for the current request context."""
+    _request_sink.set(sink)
+
+
+def current_sink():
+    """The sink that will receive the next recorded call (per-request wins)."""
+    return _request_sink.get() or _db_sink
 
 
 async def record_call(provider: str, model: str, tokens_in: int, tokens_out: int,
@@ -151,8 +168,9 @@ async def record_call(provider: str, model: str, tokens_in: int, tokens_out: int
         _buffer.append(entry)
         _counters["ai_calls"] += 1
         _counters[f"ai_calls:{provider}"] += 1
-        if _db_sink is not None:
-            await _db_sink(entry)
+        sink = _request_sink.get() or _db_sink
+        if sink is not None:
+            await sink(entry)
     except Exception as e:  # noqa: BLE001 — metering must never fail a call
         logger.debug("AI usage record skipped: %s", e)
     return entry

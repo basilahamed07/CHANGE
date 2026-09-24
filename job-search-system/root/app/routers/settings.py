@@ -96,6 +96,27 @@ async def learn_from_autofill(request: Request):
     return {"ok": True}
 
 
+async def _save_profile_entry(request: Request, method_name: str) -> dict:
+    """Persist one profile-table row from the request body.
+
+    The DB layer validates field names against the table's columns and raises
+    ValueError on anything unknown. That is a CLIENT error (a mistyped field
+    name), so it must surface as 400 — previously it escaped the router as an
+    unhandled 500 on /custom-qa, /work-history and /certifications.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "JSON body required")
+    if not isinstance(body, dict) or not body:
+        raise HTTPException(400, "JSON object body required")
+    try:
+        entry_id = await getattr(_db(request), method_name)(body)
+    except ValueError as e:
+        raise HTTPException(400, f"invalid field(s): {e}") from e
+    return {"ok": True, "id": entry_id}
+
+
 @router.get("/custom-qa")
 async def list_custom_qa(request: Request):
     return {"items": await _db(request).get_custom_qa()}
@@ -103,9 +124,7 @@ async def list_custom_qa(request: Request):
 
 @router.post("/custom-qa")
 async def save_custom_qa(request: Request):
-    body = await request.json()
-    qa_id = await _db(request).save_custom_qa(body)
-    return {"ok": True, "id": qa_id}
+    return await _save_profile_entry(request, "save_custom_qa")
 
 
 @router.delete("/custom-qa/{qa_id}")
@@ -122,9 +141,7 @@ async def get_autofill_history(request: Request, limit: int = Query(50)):
 # Profile field CRUD
 @router.post("/work-history")
 async def save_work_history(request: Request):
-    body = await request.json()
-    entry_id = await _db(request).save_work_history(body)
-    return {"ok": True, "id": entry_id}
+    return await _save_profile_entry(request, "save_work_history")
 
 
 @router.delete("/work-history/{entry_id}")
@@ -135,9 +152,7 @@ async def delete_work_history(request: Request, entry_id: int):
 
 @router.post("/education")
 async def save_education(request: Request):
-    body = await request.json()
-    entry_id = await _db(request).save_education(body)
-    return {"ok": True, "id": entry_id}
+    return await _save_profile_entry(request, "save_education")
 
 
 @router.delete("/education/{entry_id}")
@@ -148,9 +163,7 @@ async def delete_education(request: Request, entry_id: int):
 
 @router.post("/certifications")
 async def save_certification(request: Request):
-    body = await request.json()
-    entry_id = await _db(request).save_certification(body)
-    return {"ok": True, "id": entry_id}
+    return await _save_profile_entry(request, "save_certification")
 
 
 @router.delete("/certifications/{entry_id}")
@@ -161,9 +174,7 @@ async def delete_certification(request: Request, entry_id: int):
 
 @router.post("/skills")
 async def save_skill(request: Request):
-    body = await request.json()
-    entry_id = await _db(request).save_skill(body)
-    return {"ok": True, "id": entry_id}
+    return await _save_profile_entry(request, "save_skill")
 
 
 @router.delete("/skills/{entry_id}")
@@ -174,9 +185,7 @@ async def delete_skill(request: Request, entry_id: int):
 
 @router.post("/languages")
 async def save_language(request: Request):
-    body = await request.json()
-    entry_id = await _db(request).save_language(body)
-    return {"ok": True, "id": entry_id}
+    return await _save_profile_entry(request, "save_language")
 
 
 @router.delete("/languages/{entry_id}")
@@ -187,9 +196,7 @@ async def delete_language(request: Request, entry_id: int):
 
 @router.post("/references")
 async def save_reference(request: Request):
-    body = await request.json()
-    entry_id = await _db(request).save_reference(body)
-    return {"ok": True, "id": entry_id}
+    return await _save_profile_entry(request, "save_reference")
 
 
 @router.delete("/references/{entry_id}")
@@ -680,7 +687,16 @@ async def upload_resume(request: Request, file: UploadFile = File(...)):
     else:
         resume_text = content.decode("utf-8", errors="replace")
 
-    client = getattr(request.app.state, "ai_client", None)
+    # M15c: grade with the REQUESTING USER's AI configuration, not the app-level
+    # client. Before this fix every user's resume was analysed with whichever
+    # provider/key the process booted with (the admin's), and the app-level
+    # matcher was rebuilt from the caller's resume — cross-user contamination.
+    try:
+        ai_state = await request.app.state.ai_state_for(request)
+    except Exception:
+        logger.exception("per-user AI state unavailable at upload — using app default")
+        ai_state = {}
+    client = ai_state.get("ai_client") or getattr(request.app.state, "ai_client", None)
     if not client and not getattr(request.app.state, "testing", False):
         from app.main import _build_ai_client
         ai_settings = await _db(request).get_ai_settings()
@@ -702,7 +718,12 @@ async def upload_resume(request: Request, file: UploadFile = File(...)):
         analysis, profile_data = await asyncio.gather(analysis_task, profile_task)
         logger.info(f"Analysis result: ats_score={analysis.get('ats_score')}, terms={len(analysis.get('search_terms', []))}")
         logger.info(f"Profile parse: {len(profile_data)} sections extracted")
-        await request.app.state.reinit_ai_services(client, resume_text)
+        # Only the legacy / no-workspace path mutates app-level state. An
+        # authenticated request relies on ai_state_for()'s per-user cache, whose
+        # stamp includes the resume length + config version, so it rebuilds on
+        # the next request without touching anyone else's matcher.
+        if getattr(request.state, "workspace", None) is None:
+            await request.app.state.reinit_ai_services(client, resume_text)
 
     db = _db(request)
     await db.save_search_config(

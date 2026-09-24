@@ -25,6 +25,13 @@ class WorkspaceMiddleware(BaseHTTPMiddleware):
             ws = await self.manager.get_or_create(user)
             request.state.workspace = ws
             request.state.db = ws.db
+            # M15c: bill this request's AI calls to THIS user's DB. Without it
+            # every user's spend landed in the admin workspace's cost meter.
+            try:
+                from app import ai_usage
+                ai_usage.set_request_sink(ws.db.record_ai_usage)
+            except Exception:
+                logger.exception("per-user cost-meter sink failed to bind")
             try:
                 ai = await request.app.state.ai_state_for(request)
                 # Attribute-style access object for routers that read

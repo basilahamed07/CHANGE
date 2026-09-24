@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from app.main import _db  # M15b: per-user workspace DB
 
 logger = logging.getLogger(__name__)
@@ -36,9 +36,17 @@ async def discovery_health(request: Request):
 
 
 @router.post("/discovery/run")
-async def run_discovery(request: Request):
+async def run_discovery(request: Request,
+                        passes: int | None = Query(
+                            None, ge=1, le=24,
+                            description="Adapter-passes to spend this cycle "
+                                        "(1-24). Omit for the full budget.")):
     """One orchestrated discovery pass: enabled countries × search terms × adapters.
-    Runs in the background; poll GET /api/discovery/status for progress."""
+    Runs in the background; poll GET /api/discovery/status for progress.
+
+    `passes` bounds the sweep so a caller (UI button, CLI, E2E) can run a short
+    predictable cycle; without it the 24-pass budget is used in full.
+    """
     app = request.app
     registry = getattr(app.state, "country_registry", None)
     if not registry or not registry.enabled_countries():
@@ -59,7 +67,8 @@ async def run_discovery(request: Request):
         try:
             telemetry = await run_discovery_cycle(
                 bg_db, registry, ALL_ADAPTERS,
-                progress=app.state.discovery_progress)
+                progress=app.state.discovery_progress,
+                max_passes=passes)
             app.state.discovery_telemetry = telemetry
         except Exception:
             logger.exception("Discovery cycle crashed")
@@ -68,7 +77,7 @@ async def run_discovery(request: Request):
             app.state.discovery_running = False
 
     asyncio.create_task(_run())
-    return {"status": "discovery_started",
+    return {"status": "discovery_started", "passes": passes,
             "countries": [c.code for c in registry.enabled_countries()]}
 
 
