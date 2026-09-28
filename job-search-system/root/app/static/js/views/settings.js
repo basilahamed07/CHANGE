@@ -1435,6 +1435,14 @@ function renderTabAI(container, aiSettings, scraperKeys, emailSettings, embeddin
                     <label style="display:block;font-size:0.8125rem;font-weight:600;color:var(--text-tertiary);margin-bottom:4px">JSearch (RapidAPI) Key</label>
                     <input type="password" class="search-input" id="scraper-key-jsearch" placeholder="RapidAPI key" value="${keys.jsearch?.has_key ? '****' : ''}">
                 </div>
+                <div>
+                    <label style="display:block;font-size:0.8125rem;font-weight:600;color:var(--text-tertiary);margin-bottom:4px">Jooble API Key <span style="font-weight:400">(metasearch — all 10 countries)</span></label>
+                    <input type="password" class="search-input" id="scraper-key-jooble" placeholder="API key from jooble.org/api" value="${keys.jooble?.has_key ? '****' : ''}">
+                </div>
+                <div>
+                    <label style="display:block;font-size:0.8125rem;font-weight:600;color:var(--text-tertiary);margin-bottom:4px">Reed API Key <span style="font-weight:400">(UK — official API, free)</span></label>
+                    <input type="password" class="search-input" id="scraper-key-reed" placeholder="API key from reed.co.uk developer portal" value="${keys.reed?.has_key ? '****' : ''}">
+                </div>
             </div>
             <button class="btn btn-primary" id="save-scraper-keys-btn" style="margin-top:16px">Save Scraper Keys</button>
         </div>
@@ -1705,6 +1713,8 @@ function renderTabAI(container, aiSettings, scraperKeys, emailSettings, embeddin
             'adzuna-id': { api_key: document.getElementById('scraper-key-adzuna-id').value, email: '' },
             adzuna: { api_key: document.getElementById('scraper-key-adzuna').value, email: '' },
             jsearch: { api_key: document.getElementById('scraper-key-jsearch').value, email: '' },
+            jooble: { api_key: document.getElementById('scraper-key-jooble').value, email: '' },
+            reed: { api_key: document.getElementById('scraper-key-reed').value, email: '' },
         };
         try { await api.request('POST', '/api/scraper-keys', payload); showToast('Scraper keys saved', 'success'); }
         catch (err) { showToast(err.message, 'error'); }

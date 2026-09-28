@@ -10,6 +10,7 @@ Safety model:
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import APIRouter, HTTPException, Request
 from app.main import _db  # M15b: per-user workspace DB
@@ -18,13 +19,31 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/outreach")
 
 
-def _service(request: Request):
+async def _gmail_credential(request: Request) -> tuple[str, str]:
+    """The Gmail (token, source) belonging to the REQUESTING user — N1.
+
+    The token lives in this user's own workspace `email_settings` row, so two
+    users' drafts land in two different mailboxes. The process env
+    `JOBAGENT_GMAIL_TOKEN` is only the legacy single-user fallback, and the raw
+    token never leaves this function.
+    """
+    try:
+        settings = await _db(request).get_email_settings()
+    except Exception:
+        logger.exception("per-user email settings unreadable — falling back to env")
+        settings = None
+    token = str((settings or {}).get("gmail_token") or "").strip()
+    if token:
+        return token, "workspace"
+    token = os.getenv("JOBAGENT_GMAIL_TOKEN", "").strip()
+    return token, ("env" if token else "")
+
+
+async def _service(request: Request):
     from app.outreach import GmailProvider, OutreachService, load_sequences
-    ws = getattr(request.state, "workspace", None)
-    settings_dir = ws.dir if ws else (request.app.state.db_path.rsplit("/", 1)[0] if "/" in getattr(
-        request.app.state, "db_path", "") else ".")
+    token, _source = await _gmail_credential(request)
     sequences, limits, identity = load_sequences()
-    gmail = GmailProvider()
+    gmail = GmailProvider(token=token)
     return OutreachService(_db(request), sequences, limits, identity, gmail)
 
 
@@ -40,7 +59,7 @@ async def create_outreach(request: Request, job_id: int):
     if audience is not None and audience not in (
             "recruiter", "hiring_manager", "referral", "followup"):
         raise HTTPException(422, f"unknown audience: {audience}")
-    service = _service(request)
+    service = await _service(request)
     try:
         result = await service.create_outreach(
             job_id,
@@ -58,7 +77,7 @@ async def create_outreach(request: Request, job_id: int):
 @router.post("/jobs/{job_id}/followup")
 async def create_followup(request: Request, job_id: int):
     """Follow-up draft — allowed only after the configured wait (default 6 days)."""
-    service = _service(request)
+    service = await _service(request)
     try:
         return await service.create_followup(job_id)
     except ValueError as e:
@@ -74,19 +93,22 @@ async def job_outreach(request: Request, job_id: int):
 
 @router.get("/messages")
 async def all_messages(request: Request, limit: int = 100):
-    return {"count": 0, "messages": await _service(request).list_messages(min(limit, 500))}
+    return {"count": 0, "messages": await (await _service(request)).list_messages(min(limit, 500))}
 
 
 @router.get("/config")
 async def outreach_config(request: Request):
     from app.outreach import load_sequences
     sequences, limits, identity = load_sequences()
+    token, source = await _gmail_credential(request)
     return {
         "audiences": list(sequences.keys()),
         "limits": {"max_outreach_per_day": limits.max_outreach_per_day,
                    "per_company_daily_cap": limits.per_company_daily_cap,
                    "followup_wait_days": limits.followup_wait_days},
         "identity": {"sender_name": identity.sender_name},
-        "gmail_connected": bool(request.app.state and
-                                __import__("os").getenv("JOBAGENT_GMAIL_TOKEN", "")),
+        # N1: this user's connection, not the process-wide one. The token itself
+        # is never included — only whether one exists and where it came from.
+        "gmail_connected": bool(token),
+        "gmail_source": source,
     }

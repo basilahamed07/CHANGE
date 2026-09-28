@@ -1,0 +1,57 @@
+# Canada — country strategy (added 2026-09-28)
+# Sponsor-heavy market: LMIA-based work permits + Global Talent Stream (2-week
+# processing for tech roles) make Canada one of the most sponsor-friendly
+# destinations. Most tech postings at mid/large companies include relocation
+# or visa support language. Classifier already maps canadian cities -> "Canada";
+# this YAML adds the remaining cities as registry-driven terms (word-boundary).
+code: CA
+name: Canada
+region: Canada
+enabled: true
+
+aliases: [canada, canadian]
+cities:
+- toronto
+- vancouver
+- montreal
+- ottawa
+- calgary
+- edmonton
+- quebec city
+- waterloo
+- mississauga
+- brampton
+- halifax
+- victoria
+
+work_types:
+  remote: true
+  hybrid: true
+  onsite: true
+
+visa:
+  requires_sponsorship: true
+  sponsorship_keywords:
+  - visa sponsorship
+  - lmia
+  - labour market impact assessment
+  - global talent stream
+  - work permit
+  - work visa
+  - permanent residency
+  - pr support
+  - relocation support
+  - relocation package
+  - international applicants
+
+# CAD annual floor for a senior AI/ML role (rule of thumb, not a policy bar).
+salary:
+  currency: CAD
+  min: 110000
+
+search:
+  extra_terms:
+  - AI engineer
+  - machine learning engineer
+  - LLM engineer
+  - python developer

@@ -17,6 +17,7 @@ from app.scheduler import (
 )
 from app.scrapers import ALL_SCRAPERS
 from app.main import _db  # M15b: per-user workspace DB
+from app.search_gate import require_resume_for_search
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +267,10 @@ async def system_health(request: Request):
 @router.post("/scrape")
 async def trigger_scrape(request: Request):
     app = request.app
+    # No resume → no resume-derived keywords → refuse rather than silently run
+    # with hardcoded defaults. 428 so the frontend can distinguish this from the
+    # 409 "already running" case.
+    await require_resume_for_search(request)
     progress = app.state.scrape_progress
     if progress and progress.get("active"):
         return JSONResponse(

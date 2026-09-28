@@ -1,0 +1,56 @@
+# Poland — country strategy (added 2026-09-28)
+# EU member with a huge tech-services scene (Warsaw/Kraków/Wrocław) and a
+# reputation for easy employer-side work permits + relocation packages for
+# non-EU engineers. No stagnant-wage sponsorship cap like DE/UK; jobs openly
+# say "relocation package" and "visa support". Classifier's static map already
+# has warsaw/krakow; this YAML adds the rest as registry terms.
+code: PL
+name: Poland
+region: Poland
+enabled: true
+
+aliases: [poland, polska]
+cities:
+- warsaw
+- krakow
+- kraków
+- wroclaw
+- wrocław
+- gdansk
+- gdańsk
+- poznan
+- poznań
+- lodz
+- łódź
+- katowice
+- lublin
+- szczecin
+
+work_types:
+  remote: true
+  hybrid: true
+  onsite: true
+
+visa:
+  requires_sponsorship: true
+  sponsorship_keywords:
+  - visa sponsorship
+  - work permit
+  - work visa
+  - relocation package
+  - relocation support
+  - temporary residence
+  - eu blue card
+  - international applicants
+
+# PLN annual floor for a senior AI/ML role (rule of thumb, not a policy bar).
+salary:
+  currency: PLN
+  min: 250000
+
+search:
+  extra_terms:
+  - AI engineer
+  - machine learning engineer
+  - LLM engineer
+  - python developer

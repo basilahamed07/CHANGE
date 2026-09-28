@@ -99,6 +99,12 @@ const api = {
         return this.request('POST', '/api/search-config/terms', { search_terms: terms });
     },
 
+    updateSearchKeywords({ search_terms, job_titles, key_skills }) {
+        return this.request('POST', '/api/search-config/keywords', {
+            search_terms, job_titles, key_skills,
+        });
+    },
+
     async uploadResume(file) {
         const formData = new FormData();
         formData.append('file', file);

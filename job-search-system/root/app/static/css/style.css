@@ -2262,6 +2262,30 @@ kbd {
     border-bottom: none;
 }
 
+.onboarding-keyword-list {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.onboarding-keyword-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.onboarding-keyword-chip {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
 /* === Setup Indicator === */
 .setup-indicator {
     position: absolute;

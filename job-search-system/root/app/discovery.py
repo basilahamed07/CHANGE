@@ -22,19 +22,24 @@ from app.job_adapter import (
 
 logger = logging.getLogger(__name__)
 
-MAX_REQUEST_PASSES_PER_CYCLE = 24      # adapter-passes per orchestrated cycle
+# 2026-09-28: 10 countries × 19 adapters = up to 190 passes/term — the old 24
+# cap would starve the sweep after ~2 countries. 50 lets a cycle cover 2-3
+# countries fully; scheduled cycles rotate through the rest.
+MAX_REQUEST_PASSES_PER_CYCLE = 50      # adapter-passes per orchestrated cycle
 MAX_LISTINGS_PER_PASS = 200            # ingest cap per pass
 
 
 async def run_discovery_cycle(db, registry, all_adapters, ai_client=None,
                               progress: dict | None = None,
-                              max_passes: int | None = None) -> dict:
+                              max_passes: int | None = None,
+                              scraper_keys: dict | None = None) -> dict:
     """One orchestrated discovery pass across enabled countries × search terms.
 
     `max_passes` bounds the adapter-passes consumed this cycle (1..24). The UI
     and CLI use it to run a short, predictable sweep instead of always burning
-    the full budget; omit it for the default cap. Returns machine-readable
-    telemetry for the API/report.
+    the full budget; omit it for the default cap. `scraper_keys` (optional)
+    overrides the per-user DB keys — used by env-fallback wiring. Returns
+    machine-readable telemetry for the API/report.
     """
     from app.title_filter import is_relevant_title
     from app.location_classifier import classify_location_rule_based
@@ -75,7 +80,8 @@ async def run_discovery_cycle(db, registry, all_adapters, ai_client=None,
                     telemetry["budget_exhausted"] = True
                     break
                 budget -= 1
-                adapter = adapter_cls(search_terms=[term], scraper_keys=await db.get_scraper_keys())
+                keys = scraper_keys if scraper_keys is not None else await db.get_scraper_keys()
+                adapter = adapter_cls(search_terms=[term], scraper_keys=keys)
                 pass_rec = {
                     "country": country.code, "term": term,
                     "source": adapter.source_name,

@@ -22,13 +22,15 @@ SEEDS = Path(__file__).resolve().parents[1] / "config" / "countries"
 
 # ---------------- registry loading / schema ----------------
 
-def test_all_six_seed_countries_load():
+def test_all_seed_countries_load():
     reg = CountryRegistry(SEEDS).load()
     # region strings = what the classifier emits / jobs.location_region stores
     assert set(reg.region_names()) == {
         "Germany", "Netherlands", "Ireland", "UK", "Singapore", "UAE",
+        "India",      # 7th country added 2026-09-28 (docs/JOB_PORTALS_BY_COUNTRY.md)
+        "Canada", "Australia", "Poland",  # sponsor-heavy trio added 2026-09-28
     }
-    assert len(reg.enabled_countries()) == 6
+    assert len(reg.enabled_countries()) == 10
 
 
 def test_adding_country_requires_zero_code_changes(tmp_path):
@@ -138,9 +140,9 @@ async def test_countries_api_list(seeded_app):
         r = await ac.get("/api/countries")
     assert r.status_code == 200
     body = r.json()
-    assert body["count"] == 6
+    assert body["count"] == 10
     codes = {c["code"] for c in body["countries"]}
-    assert codes == {"DE", "NL", "IE", "GB", "SG", "AE"}
+    assert codes == {"DE", "NL", "IE", "GB", "SG", "AE", "IN", "CA", "AU", "PL"}
 
 
 @pytest.mark.asyncio

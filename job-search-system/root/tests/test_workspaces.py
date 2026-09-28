@@ -210,3 +210,183 @@ async def test_admin_does_not_auto_see_user_data(world):
     assert r.status_code == 200
     names = [u["username"] for u in r.json()["users"]]
     assert {"basil", "alice", "bob"} <= set(names)
+
+
+# ------------------------------------------------------------------ migration
+
+@pytest.mark.asyncio
+async def test_migration_never_moves_a_wal_belonging_to_another_db(tmp_path):
+    """Regression: main.py re-creates the pre-multi-user DB at data/jobagent.db
+    on EVERY boot, so when the (idempotent) migration runs again its -wal/-shm
+    sidecars belong to that fresh file — not to the admin's workspace DB.
+
+    Migrating a sidecar on its own grafts the old DB's WAL onto the workspace
+    DB; SQLite then reads page 1 from the wrong database and startup dies with
+    "database disk image is malformed".
+    """
+    import sqlite3
+
+    from app.workspace import WorkspaceManager
+
+    users_root = tmp_path / "users"
+    wdir = users_root / "1-basil"
+    wdir.mkdir(parents=True)
+    ws_db = wdir / "jobagent.db"
+
+    # The already-migrated admin workspace DB, cleanly shut down (no sidecars).
+    con = sqlite3.connect(ws_db)
+    con.execute("CREATE TABLE jobs(id INTEGER)")
+    con.execute("INSERT INTO jobs VALUES (1)")
+    con.commit()
+    con.close()
+    assert not (wdir / "jobagent.db-wal").exists()
+
+    # The fresh main DB this boot created, with ACTIVE WAL/SHM sidecars.
+    data = tmp_path / "data"
+    data.mkdir()
+    fresh = sqlite3.connect(data / "jobagent.db", isolation_level=None)
+    try:
+        fresh.execute("CREATE TABLE jobs(id INTEGER)")
+        fresh.execute("PRAGMA journal_mode=WAL")
+        fresh.execute("INSERT INTO jobs VALUES (2)")
+        assert (data / "jobagent.db-wal").exists(), "precondition: fresh DB has a WAL"
+
+        mgr = WorkspaceManager(users_root=str(users_root))
+        moved = await mgr.migrate_single_user(
+            str(data), {"id": 1, "username": "basil"})
+
+        assert not (wdir / "jobagent.db-wal").exists(), \
+            "a WAL from another DB was hijacked into the workspace"
+        assert not (wdir / "jobagent.db-shm").exists()
+        assert "jobagent.db-wal" not in moved
+        assert (data / "jobagent.db-wal").exists(), "the main DB keeps its own WAL"
+
+        # The workspace DB must still be readable — this is what broke startup.
+        check = sqlite3.connect(ws_db)
+        try:
+            assert check.execute("SELECT count(*) FROM jobs").fetchone()[0] == 1
+        finally:
+            check.close()
+    finally:
+        fresh.close()
+
+
+@pytest.mark.asyncio
+async def test_first_migration_moves_db_together_with_its_wal(tmp_path):
+    """The sidecars of the DB being migrated must still travel WITH it."""
+    import sqlite3
+
+    from app.workspace import WorkspaceManager
+
+    data = tmp_path / "data"
+    data.mkdir()
+    con = sqlite3.connect(data / "jobagent.db", isolation_level=None)
+    try:
+        con.execute("CREATE TABLE jobs(id INTEGER)")
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("INSERT INTO jobs VALUES (7)")
+        assert (data / "jobagent.db-wal").exists(), "precondition: DB has a WAL"
+
+        mgr = WorkspaceManager(users_root=str(tmp_path / "users"))
+        await mgr.migrate_single_user(str(data), {"id": 1, "username": "basil"})
+
+        wdir = tmp_path / "users" / "1-basil"
+        assert (wdir / "jobagent.db").exists()
+        assert (wdir / "jobagent.db-wal").exists()
+        assert not (data / "jobagent.db").exists()
+    finally:
+        con.close()
+
+    check = sqlite3.connect(tmp_path / "users" / "1-basil" / "jobagent.db")
+    try:
+        assert check.execute(
+            "SELECT count(*) FROM jobs").fetchone()[0] == 1
+    finally:
+        check.close()
+
+
+# ------------------------------------------------- resume-driven search gate
+
+async def _seed_resume(client) -> None:
+    """Upload a .txt resume without touching a real provider.
+
+    In test mode the analysis call is stubbed to an empty result, but the upload
+    still stores resume_text into search_config — exactly what the gate needs.
+    """
+    r = await client.post(
+        "/api/resume/upload",
+        files={"file": ("candidate.txt", b"AI Engineer\nPython, LLM, RAG", "text/plain")})
+    assert r.status_code == 200, r.text
+
+
+def _stub_resume_ai(monkeypatch) -> None:
+    """Replace the two resume-AI calls with deterministic empty results so no
+    provider is contacted and no key is needed."""
+    import app.resume_analyzer as resume_analyzer
+
+    async def _empty_analysis(client, text):
+        return {"search_terms": [], "job_titles": [], "key_skills": [],
+                "seniority": "", "summary": "", "ats_score": 0,
+                "ats_issues": [], "ats_tips": []}
+
+    async def _empty_profile(client, text):
+        return {}
+
+    monkeypatch.setattr(resume_analyzer, "analyze_resume", _empty_analysis)
+    monkeypatch.setattr(resume_analyzer, "parse_resume_to_profile", _empty_profile)
+
+
+@pytest.mark.asyncio
+async def test_search_blocked_until_a_resume_exists(world, monkeypatch):
+    """A brand-new user cannot search/discover before uploading a resume, and
+    the block is per-user (one user's resume never unlocks another's search)."""
+    _stub_resume_ai(monkeypatch)
+
+    _app, clients = world
+    r = await clients["alice"].post("/api/scrape")
+    assert r.status_code == 428, r.text
+    assert "resume" in r.text.lower()
+    r = await clients["alice"].post("/api/discovery/run?passes=1")
+    assert r.status_code == 428, r.text
+
+    # Alice uploads; Bob still has none and must stay blocked.
+    await _seed_resume(clients["alice"])
+    r = await clients["bob"].post("/api/scrape")
+    assert r.status_code == 428, "bob must not inherit alice's resume"
+
+    # Alice's gate is now lifted: scrape is accepted (not 428). The pipeline is
+    # stubbed so no real network scrape is launched.
+    import app.routers.scraping as scraping_router
+
+    async def _noop(app_, task_id, db=None, matcher=None):
+        return None
+
+    monkeypatch.setattr(scraping_router, "_scrape_and_score", _noop)
+    r = await clients["alice"].post("/api/scrape")
+    assert r.status_code == 202, r.text
+
+
+@pytest.mark.asyncio
+async def test_keyword_confirm_screen_saves_and_is_isolated(world, monkeypatch):
+    """The onboarding confirm/edit step saves the user's own keywords and those
+    keywords never leak into another user's search config."""
+    _stub_resume_ai(monkeypatch)
+
+    _app, clients = world
+    await _seed_resume(clients["alice"])
+    r = await clients["alice"].post(
+        "/api/search-config/keywords",
+        json={"search_terms": ["RAG Engineer", "LLM Engineer"],
+              "key_skills": ["Python", "LangChain"]})
+    assert r.status_code == 200, r.text
+
+    alice_cfg = (await clients["alice"].get("/api/search-config")).json()
+    assert alice_cfg["search_terms"] == ["RAG Engineer", "LLM Engineer"]
+    assert "Python" in alice_cfg["key_skills"]
+
+    bob_cfg = (await clients["bob"].get("/api/search-config")).json()
+    assert bob_cfg.get("search_terms") in ([], None)
+
+    # Empty payloads are rejected rather than silently clearing the config.
+    r = await clients["alice"].post("/api/search-config/keywords", json={})
+    assert r.status_code == 400, r.text

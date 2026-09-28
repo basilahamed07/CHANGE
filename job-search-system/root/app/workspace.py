@@ -178,7 +178,10 @@ class WorkspaceManager:
                                   db_filename: str = "jobagent.db") -> str:
         """Move the pre-multi-user data (the main DB file + WAL/SHM, profile/,
         applications/) into the admin's workspace. Idempotent: skips entries
-        already moved. db_filename covers non-default names (e2e.db in tests)."""
+        already moved. db_filename covers non-default names (e2e.db in tests).
+
+        The DB file and its -wal/-shm sidecars move as ONE unit, and only when
+        the DB itself is moved; sidecars are never migrated independently."""
         moved = []
         wdir = self.workspace_dir(admin_user["id"], admin_user["username"])
         os.makedirs(wdir, exist_ok=True)
@@ -195,7 +198,17 @@ class WorkspaceManager:
                 if os.path.exists(s):
                     shutil.move(s, canonical + suffix)
 
-        for entry in (e for e in MIGRATE_ENTRIES if e != "jobagent.db"):
+        # WAL/SHM are SIDECARS of one specific DB file: they only mean anything
+        # next to the exact database they were written for, and they are already
+        # moved together with it in the block above. Moving them on their own
+        # (which the generic loop below used to do) grafts the OLD main DB's WAL
+        # onto the admin's workspace DB — SQLite then takes page 1 from a
+        # foreign 100-page database, so the workspace DB reads as unreadable and
+        # startup dies with "database disk image is malformed". Only the
+        # standalone entries (profile/, applications/) travel through the loop.
+        db_sidecars = {db_filename, f"{db_filename}-wal", f"{db_filename}-shm",
+                       "jobagent.db", "jobagent.db-wal", "jobagent.db-shm"}
+        for entry in (e for e in MIGRATE_ENTRIES if e not in db_sidecars):
             src = os.path.join(old_data_dir, entry)
             dst = os.path.join(wdir, entry)
             if not os.path.exists(src):

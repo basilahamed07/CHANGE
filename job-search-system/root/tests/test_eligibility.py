@@ -3,7 +3,7 @@
 CRITICAL TEST #3 lives here: DATE_UNKNOWN never becomes VERIFIED_FRESH and
 never enters the eligible pool. Plus the full reason-code matrix.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -33,7 +33,10 @@ def _job(**over):
         "title": "AI Engineer", "company": "Co", "location": "Berlin, Germany",
         "description": "x" * 100, "dismissed": 0, "strategy_dismissed": 0,
         "location_classified": 1, "location_region": "Germany",
-        "work_type": "", "posted_date": "2026-09-19", "salary_min": None,
+        "work_type": "", "posted_date": (date.today() - timedelta(days=2)).isoformat(),
+        # ^ relative to today: freshness is judged against the real clock, so a
+        # hardcoded date goes stale as the calendar moves (found 2026-09-27).
+        "salary_min": None,
     }
     base.update(over)
     return base
@@ -152,7 +155,8 @@ async def test_eligible_query_excludes_unknown_and_stale(tmp_path):
     await db.update_allowed_regions(["Germany", "Remote"])
 
     fresh = await db.insert_job("F", "Co", "Berlin, Germany", None, None,
-                                "x" * 100, "http://x/1", "2026-09-20",
+                                "x" * 100, "http://x/1",
+                                (date.today() - timedelta(days=1)).isoformat(),
                                 "direct", None)
     await db.set_job_location_region(fresh, "Germany")
 

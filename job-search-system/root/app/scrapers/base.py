@@ -113,18 +113,28 @@ class BaseScraper:
         )
 
     async def rate_limited_get(self, client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
-        """Make a GET request with per-domain rate limiting and retry/backoff."""
+        """Make a rate-limited HTTP request with retry/backoff.
+
+        Defaults to GET; pass method="POST" (plus json=/data= kwargs) for
+        POST-based APIs like Jooble — the same rate limiting and retry/backoff
+        apply. Any other kwargs pass through to httpx untouched.
+        """
         await get_limiter_for_url(url).acquire()
+        method = str(kwargs.pop("method", "GET")).upper()
+        if method == "POST":
+            return await self._request_with_retry(client, url, _http_method="POST", **kwargs)
         return await self._request_with_retry(client, url, **kwargs)
 
     async def _request_with_retry(self, client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
-        """Execute a GET request with exponential backoff on retryable errors."""
+        """Execute a request with exponential backoff on retryable errors."""
+        http_method = str(kwargs.pop("_http_method", "GET")).upper()
+        sender = client.post if http_method == "POST" else client.get
         last_exc = None
         delay = self.initial_delay
 
         for attempt in range(1, self.max_retries + 1):
             try:
-                resp = await client.get(url, **kwargs)
+                resp = await sender(url, **kwargs)
 
                 # Check Retry-After header on 429/503
                 if resp.status_code in RETRYABLE_STATUS_CODES and attempt < self.max_retries:

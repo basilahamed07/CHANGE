@@ -4,9 +4,29 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from app.main import _db  # M15b: per-user workspace DB
+from app.search_gate import require_resume_for_search
+
+
+def _env_scraper_keys() -> dict:
+    """Env-var fallbacks for keyed sources (same pattern as usajobs.py).
+
+    DB keys (Settings UI) always win; env fills the gap for headless setups.
+    Only sources with dedicated env vars are listed here.
+    """
+    env_keys = {}
+    if os.environ.get("JOBAGENT_JOOBLE_API_KEY"):
+        env_keys["jooble"] = {"api_key": os.environ["JOBAGENT_JOOBLE_API_KEY"], "email": ""}
+    if os.environ.get("JOBAGENT_ADZUNA_APP_KEY"):
+        env_keys["adzuna"] = {"api_key": os.environ["JOBAGENT_ADZUNA_APP_KEY"], "email": ""}
+    if os.environ.get("JOBAGENT_ADZUNA_APP_ID"):
+        env_keys["adzuna-id"] = {"api_key": os.environ["JOBAGENT_ADZUNA_APP_ID"], "email": ""}
+    if os.environ.get("JOBAGENT_REED_API_KEY"):
+        env_keys["reed"] = {"api_key": os.environ["JOBAGENT_REED_API_KEY"], "email": ""}
+    return env_keys
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -23,6 +43,8 @@ async def discovery_health(request: Request):
     """Per-source reachability probe (cheap, parallel)."""
     from app.adapters import ALL_ADAPTERS
     keys = await _db(request).get_scraper_keys()
+    for name, entry in _env_scraper_keys().items():
+        keys.setdefault(name, entry)
 
     async def probe(cls):
         adapter = cls(scraper_keys=keys)
@@ -38,9 +60,9 @@ async def discovery_health(request: Request):
 @router.post("/discovery/run")
 async def run_discovery(request: Request,
                         passes: int | None = Query(
-                            None, ge=1, le=24,
+                            None, ge=1, le=50,
                             description="Adapter-passes to spend this cycle "
-                                        "(1-24). Omit for the full budget.")):
+                                        "(1-50). Omit for the full budget.")):
     """One orchestrated discovery pass: enabled countries × search terms × adapters.
     Runs in the background; poll GET /api/discovery/status for progress.
 
@@ -48,6 +70,9 @@ async def run_discovery(request: Request,
     predictable cycle; without it the 24-pass budget is used in full.
     """
     app = request.app
+    # Resume-driven keywords are a precondition: without them discovery would
+    # fall back to hardcoded defaults instead of the candidate's own targets.
+    await require_resume_for_search(request)
     registry = getattr(app.state, "country_registry", None)
     if not registry or not registry.enabled_countries():
         raise HTTPException(503, "No countries enabled — configure /api/countries first")
@@ -65,10 +90,14 @@ async def run_discovery(request: Request,
 
     async def _run():
         try:
+            keys = await bg_db.get_scraper_keys()
+            for name, entry in _env_scraper_keys().items():
+                keys.setdefault(name, entry)
             telemetry = await run_discovery_cycle(
                 bg_db, registry, ALL_ADAPTERS,
                 progress=app.state.discovery_progress,
-                max_passes=passes)
+                max_passes=passes,
+                scraper_keys=keys)
             app.state.discovery_telemetry = telemetry
         except Exception:
             logger.exception("Discovery cycle crashed")

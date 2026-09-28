@@ -62,6 +62,8 @@ DOMAIN_LIMITS: dict[str, tuple[float, float]] = {
     "www.arbeitnow.com": (2.0, 1.0),
     "jobicy.com": (2.0, 1.0),
     "weworkremotely.com": (2.0, 1.0),
+    "api.jooble.org": (1.0, 1.0),
+    "www.reed.co.uk": (1.0, 1.0),
 }
 
 DEFAULT_RATE = 1.0

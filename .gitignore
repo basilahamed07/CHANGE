@@ -25,6 +25,11 @@ job-search-system/applications/
 # The harness itself (analysis/e2e_user_journey.py) IS versioned; its output is not.
 job-search-system/analysis/e2e_runs/
 
+# Generated .docx artifacts stay out of the repo (Session-15 policy: *.docx not
+# versioned). The .md source-of-truth guides ARE versioned; the .docx renders
+# are regenerated on demand (analysis/make_user_process_docx.py).
+job-search-system/docs/*.docx
+
 # Chat transcripts exported by the agent client
 freebuff-chat-*.md
 *freebuff*.txt

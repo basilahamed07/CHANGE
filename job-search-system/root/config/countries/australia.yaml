@@ -1,0 +1,52 @@
+# Australia — country strategy (added 2026-09-28)
+# Sponsor-heavy market: Temporary Skill Shortage (subclass 482) and the
+# Employer Nomination Scheme (subclass 186) are employer-sponsored; tech is on
+# the Core Skills Occupation List. Sydney/Melbourne/Brisbane/Perth are wired in
+# the classifier's static map; this YAML adds the rest as registry terms.
+code: AU
+name: Australia
+region: Australia
+enabled: true
+
+aliases: [australia, australian]
+cities:
+- sydney
+- melbourne
+- brisbane
+- perth
+- adelaide
+- canberra
+- gold coast
+- darwin
+- hobart
+
+work_types:
+  remote: true
+  hybrid: true
+  onsite: true
+
+visa:
+  requires_sponsorship: true
+  sponsorship_keywords:
+  - visa sponsorship
+  - 482 visa
+  - temporary skill shortage
+  - 186 visa
+  - employer nomination
+  - work visa
+  - work permit
+  - relocation support
+  - relocation package
+  - international applicants
+
+# AUD annual floor for a senior AI/ML role (rule of thumb, not a policy bar).
+salary:
+  currency: AUD
+  min: 120000
+
+search:
+  extra_terms:
+  - AI engineer
+  - machine learning engineer
+  - LLM engineer
+  - python developer

@@ -476,6 +476,8 @@ class Database:
                 digest_schedule TEXT NOT NULL DEFAULT 'daily',
                 digest_time TEXT NOT NULL DEFAULT '08:00',
                 digest_min_score INTEGER NOT NULL DEFAULT 60,
+                gmail_token TEXT NOT NULL DEFAULT '',
+                gmail_address TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS saved_views (
@@ -803,6 +805,16 @@ class Database:
         ai_columns = {row[1] for row in await ai_cursor.fetchall()}
         if ai_columns and "region" not in ai_columns:
             await self.db.execute("ALTER TABLE ai_settings ADD COLUMN region TEXT NOT NULL DEFAULT ''")
+
+        # M15c (N1): the Gmail token lives in the USER'S OWN workspace row so two
+        # users' outreach drafts land in two different mailboxes. Before this the
+        # provider fell back to one shared JOBAGENT_GMAIL_TOKEN env var for everyone.
+        email_cursor = await self.db.execute("PRAGMA table_info(email_settings)")
+        email_columns = {row[1] for row in await email_cursor.fetchall()}
+        for col in ("gmail_token", "gmail_address"):
+            if email_columns and col not in email_columns:
+                await self.db.execute(
+                    f"ALTER TABLE email_settings ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
 
         # One-time migration: move notes from applications to app_events
         cursor = await self.db.execute(
@@ -1676,6 +1688,49 @@ class Database:
             (json.dumps(search_terms), now)
         )
         await self.db.commit()
+
+    async def update_search_keywords(self, search_terms: list[str],
+                                     job_titles: list | None = None,
+                                     key_skills: list | None = None) -> bool:
+        """Save the resume-derived keywords the user confirmed in onboarding.
+
+        Only writes the columns actually provided, so the onboarding confirm
+        screen can adjust the search terms without clobbering job titles/skills.
+        Returns False when there is no search_config row yet (no resume).
+        """
+        sets, params = [], []
+        if search_terms is not None:
+            sets.append("search_terms = ?")
+            params.append(json.dumps(search_terms))
+        if job_titles is not None:
+            sets.append("job_titles = ?")
+            params.append(json.dumps(job_titles))
+        if key_skills is not None:
+            sets.append("key_skills = ?")
+            params.append(json.dumps(key_skills))
+        if not sets:
+            return False
+        sets.append("updated_at = ?")
+        params.append(datetime.now(timezone.utc).isoformat())
+        params.append(1)
+        cursor = await self.db.execute(
+            f"UPDATE search_config SET {', '.join(sets)} WHERE id = ?", tuple(params))
+        await self.db.commit()
+        return cursor.rowcount > 0
+
+    async def has_usable_resume(self) -> bool:
+        """True when the user has a resume whose keywords can drive discovery.
+
+        This is the no-resume gate: without resume text (or extracted search
+        terms) a search would silently fall back to hardcoded defaults, not the
+        candidate's own targets. A manually-added resume row counts too.
+        """
+        config = await self.get_search_config()
+        if config and (config.get("resume_text") or config.get("search_terms")):
+            return True
+        cursor = await self.db.execute(
+            "SELECT 1 FROM resumes WHERE resume_text IS NOT NULL AND resume_text != '' LIMIT 1")
+        return await cursor.fetchone() is not None
 
     async def get_unclassified_jobs(self, limit=500):
         cursor = await self.db.execute(
@@ -2697,15 +2752,17 @@ class Database:
             """INSERT INTO email_settings
                (id, smtp_host, smtp_port, smtp_username, smtp_password, smtp_use_tls,
                 from_address, to_address, digest_enabled, digest_schedule,
-                digest_time, digest_min_score, updated_at)
-               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                digest_time, digest_min_score, gmail_token, gmail_address, updated_at)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(id) DO UPDATE SET
                 smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port,
                 smtp_username=excluded.smtp_username, smtp_password=excluded.smtp_password,
                 smtp_use_tls=excluded.smtp_use_tls, from_address=excluded.from_address,
                 to_address=excluded.to_address, digest_enabled=excluded.digest_enabled,
                 digest_schedule=excluded.digest_schedule, digest_time=excluded.digest_time,
-                digest_min_score=excluded.digest_min_score, updated_at=excluded.updated_at""",
+                digest_min_score=excluded.digest_min_score,
+                gmail_token=excluded.gmail_token, gmail_address=excluded.gmail_address,
+                updated_at=excluded.updated_at""",
             (
                 settings.get("smtp_host", ""),
                 settings.get("smtp_port", 587),
@@ -2718,6 +2775,8 @@ class Database:
                 settings.get("digest_schedule", "daily"),
                 settings.get("digest_time", "08:00"),
                 settings.get("digest_min_score", 60),
+                (settings.get("gmail_token") or "").strip(),
+                (settings.get("gmail_address") or "").strip(),
                 now,
             ),
         )

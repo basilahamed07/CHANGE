@@ -58,6 +58,24 @@ function updateActiveNav() {
     });
 }
 
+// Setup UI = the onboarding wizard + the "n/3 setup" nav badge. It exists for a
+// SIGNED-IN user only, so it runs from handleRoute() AFTER the auth gate — never
+// from DOMContentLoaded, where it used to fire before anyone had logged in and
+// showed the "Upload Your Resume" wizard to anonymous visitors on a fresh
+// browser (empty localStorage). Runs at most once per page load.
+let _setupUiShown = false;
+
+async function maybeShowSetupUI() {
+    if (_setupUiShown) return;
+    _setupUiShown = true;
+    if (typeof updateSetupIndicator === 'function') {
+        await updateSetupIndicator();
+    }
+    if (typeof showOnboardingWizard === 'function' && !isOnboardingDone()) {
+        showOnboardingWizard();
+    }
+}
+
 async function handleRoute() {
     cleanupCurrentView();
     const route = getRoute();
@@ -66,6 +84,9 @@ async function handleRoute() {
 
     // M15a: every route passes the auth gate (bootstrap → login → app).
     if (typeof authGate === 'function' && !(await authGate(app))) return;
+
+    // Authenticated from here on — safe for per-user setup UI.
+    await maybeShowSetupUI();
 
     if (route.view === 'detail') {
         await renderJobDetail(app, route.id);
@@ -357,7 +378,17 @@ async function handleScrape() {
         const result = await api.triggerScrape();
         startScrapePoll(result && result.task_id);
     } catch (err) {
-        showToast(err.message, 'error');
+        // A missing resume is a setup problem, not a scrape failure — point the
+        // user straight at the wizard instead of a dead-end error toast.
+        if (/resume/i.test(err.message || '')) {
+            showToast('Upload a resume first so we know what to search for.', 'error');
+            if (typeof showOnboardingWizard === 'function') {
+                localStorage.removeItem(onboardingKey());
+                showOnboardingWizard();
+            }
+        } else {
+            showToast(err.message, 'error');
+        }
         resetScrapeButtons();
     }
 }
@@ -768,10 +799,7 @@ function initNotificationSSE() {
 
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
-    if (!isOnboardingDone()) {
-        showOnboardingWizard();
-    }
-    updateSetupIndicator();
+    // Login/bootstrap screen comes first; setup UI runs post-auth (handleRoute).
     handleRoute();
 
     window.addEventListener('hashchange', handleRoute);

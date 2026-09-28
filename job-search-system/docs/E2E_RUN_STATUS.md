@@ -5,7 +5,10 @@
 > `docs/USER_JOURNEY_E2E_REPORT.md` (rewritten on every harness run) and the raw
 > evidence lives in `analysis/e2e_runs/<date>_<time>/`.
 
-**Last updated:** 2026-09-24 (latest harness run `2026-09-24_125119` — definitive, config-isolated)
+**Last updated:** 2026-09-28 — N1 per-user Gmail tokens DONE (code + 4 real-scenario
+tests, committed; NEXT_5_PLAN.md progress board updated). Resume-first onboarding
+gate + discovery expansion reports below date from 2026-09-27 / 2026-09-28. Latest
+user-journey harness run remains `2026-09-24_125119` (definitive, config-isolated).
 
 ---
 
@@ -102,7 +105,7 @@ regressions — worth raising `pytest-timeout` for that file in a later pass.
 | Full-suite `pytest-timeout` flakiness in `tests/test_workspaces.py` | 3 tests time out only when the whole suite runs in parallel; they pass alone — raise their timeout |
 | Nothing is committed yet | the harness, the 5 fixes and the docs are working-tree changes (branch `dev`) |
 | AI-dependent paths were previously SKIPped pending a key | now **live** on DeepSeek (grading, tailoring, cover letter, interview-prep, contact research) |
-| M15c remaining | per-user **Gmail token** and per-user **scraper keys** still resolve from the app-level settings; per-user *scheduled* (background-interval) cycles still use the admin workspace |
+| M15c remaining | per-user **Gmail token** ✅ DONE 2026-09-27 (workspace `email_settings`, masked read-back, env fallback; `tests/test_multiuser_real_scenario.py` 4/4). Scraper keys were already per-user. Still open: per-user *scheduled* (background-interval) cycles use the admin workspace (N2) |
 | M15d / M15e | admin "Act as user" audit UI and key encryption at rest still pending (see `docs/MULTI_USER_PLAN.md`) |
 
 ---

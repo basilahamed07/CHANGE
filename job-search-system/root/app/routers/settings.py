@@ -331,6 +331,44 @@ async def update_search_terms(request: Request):
     return {"ok": True, "search_terms": terms}
 
 
+@router.post("/search-config/keywords")
+async def update_search_keywords(request: Request):
+    """Save the resume-derived keywords confirmed on the onboarding screen.
+
+    Accepts any subset of `search_terms` / `job_titles` / `key_skills` so the
+    confirm/edit step can tweak the search terms without wiping the titles and
+    skills the resume analysis produced. Requires a resume (search_config row).
+    """
+    body = await request.json()
+    terms = body.get("search_terms")
+    job_titles = body.get("job_titles")
+    key_skills = body.get("key_skills")
+    for name, value in (("search_terms", terms), ("job_titles", job_titles),
+                        ("key_skills", key_skills)):
+        if value is not None and not isinstance(value, list):
+            raise HTTPException(400, f"{name} must be a list")
+    if terms is None and job_titles is None and key_skills is None:
+        raise HTTPException(400, "Nothing to update")
+
+    def _clean(values):
+        out = []
+        for v in values:
+            if isinstance(v, dict):
+                if str(v.get("title", "")).strip():
+                    out.append(v)
+            elif str(v).strip():
+                out.append(str(v).strip())
+        return out
+
+    await _db(request).update_search_keywords(
+        _clean(terms) if terms is not None else None,
+        _clean(job_titles) if job_titles is not None else None,
+        _clean(key_skills) if key_skills is not None else None,
+    )
+    return {"ok": True,
+            "search_terms": _clean(terms) if terms is not None else None}
+
+
 @router.post("/search-config/exclude-terms")
 async def update_exclude_terms(request: Request):
     body = await request.json()
@@ -564,10 +602,19 @@ async def backfill_embeddings(request: Request):
 
 @router.get("/settings/email")
 async def get_email_settings(request: Request):
+    """Per-user email + Gmail settings (N1: the Gmail token is THIS user's).
+
+    The raw token is never echoed — it is masked like an AI key, while
+    `gmail_connected` tells the UI whether one is configured.
+    """
     settings = await _db(request).get_email_settings()
-    if settings:
-        settings.pop("smtp_password", None)
-    return settings or {}
+    if not settings:
+        return {}
+    settings.pop("smtp_password", None)
+    token = (settings.get("gmail_token") or "").strip()
+    settings["gmail_connected"] = bool(token)
+    settings["gmail_token"] = _mask_key(token)
+    return settings
 
 
 @router.post("/settings/email")
@@ -577,6 +624,20 @@ async def save_email_settings(request: Request):
     existing = await db.get_email_settings()
     if data.get("smtp_password") == "" and existing:
         data["smtp_password"] = existing.get("smtp_password", "")
+    # --- N1: Gmail token hygiene -------------------------------------
+    # A masked value (or an omitted/empty one) keeps whatever is already stored,
+    # so the UI round-tripping `****abcd` never blanks the credential. Explicit
+    # clear_gmail_token is the only way to remove it. Non-ASCII pasted alongside
+    # a token would corrupt the OAuth header, so strip it like the AI key.
+    raw_gmail = "".join(ch for ch in str(data.get("gmail_token") or "")
+                        if ch.isascii() and not ch.isspace())
+    if data.pop("clear_gmail_token", False):
+        data["gmail_token"] = ""
+    elif not raw_gmail or raw_gmail.startswith("****"):
+        data["gmail_token"] = (existing or {}).get("gmail_token", "")
+    else:
+        data["gmail_token"] = raw_gmail
+    data["gmail_address"] = str(data.get("gmail_address") or "").strip()
     await db.update_email_settings(data)
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler and scheduler.running:

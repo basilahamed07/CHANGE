@@ -60,13 +60,16 @@ async function updateSetupIndicator() {
 
 function showOnboardingWizard() {
     let currentStep = 0;
-    const stepData = { name: '', email: '', location: '' };
+    // Resume comes FIRST: a brand-new user must give us a resume before the app
+    // can know which roles to search for. The AI step then powers the extraction
+    // and the keywords step lets the user confirm what we'll search for.
+    const stepData = { resumeUploaded: false, analysis: null };
 
     const wizard = document.createElement('div');
     wizard.id = 'onboarding-wizard';
 
     function renderStep() {
-        const steps = [renderStep1, renderStep2, renderStep3, renderStep4];
+        const steps = [renderStep1Resume, renderStep2Ai, renderStep3Keywords, renderStep4Done];
         const dots = [0, 1, 2, 3].map(i =>
             `<div class="onboarding-step-dot ${i === currentStep ? 'active' : (i < currentStep ? 'done' : '')}"></div>`
         ).join('');
@@ -84,34 +87,10 @@ function showOnboardingWizard() {
         attachStepListeners();
     }
 
-    function renderStep1() {
+    function renderStep1Resume() {
         return `
             <h2 id="onboarding-title" class="onboarding-heading">Welcome to jobagent</h2>
-            <p class="onboarding-desc">Let's get you set up. First, tell us a bit about yourself.</p>
-            <div class="onboarding-form">
-                <div class="onboarding-field">
-                    <label for="onb-name">Full Name</label>
-                    <input type="text" id="onb-name" class="search-input" placeholder="Your name" value="${escapeHtml(stepData.name)}">
-                </div>
-                <div class="onboarding-field">
-                    <label for="onb-email">Email</label>
-                    <input type="email" id="onb-email" class="search-input" placeholder="you@example.com" value="${escapeHtml(stepData.email)}">
-                </div>
-                <div class="onboarding-field">
-                    <label for="onb-location">Location</label>
-                    <input type="text" id="onb-location" class="search-input" placeholder="City, State" value="${escapeHtml(stepData.location)}">
-                </div>
-            </div>
-            <div class="onboarding-actions">
-                <button class="btn btn-primary" id="onb-next">Next</button>
-            </div>
-        `;
-    }
-
-    function renderStep2() {
-        return `
-            <h2 id="onboarding-title" class="onboarding-heading">Upload Your Resume</h2>
-            <p class="onboarding-desc">Upload a resume so we can match you with relevant jobs and tailor applications.</p>
+            <p class="onboarding-desc">First, upload your resume. We read it to learn which roles you're looking for, then search for them.</p>
             <div class="onboarding-upload" id="onb-upload-area">
                 <div class="onboarding-upload-icon">&#128196;</div>
                 <div class="onboarding-upload-text">Drop a file here or click to browse</div>
@@ -120,17 +99,15 @@ function showOnboardingWizard() {
             </div>
             <div id="onb-upload-status"></div>
             <div class="onboarding-actions">
-                <button class="btn btn-secondary" id="onb-back">Back</button>
-                <button class="btn btn-ghost" id="onb-skip">Skip</button>
-                <button class="btn btn-primary" id="onb-next">Next</button>
+                <button class="btn btn-primary" id="onb-next" disabled>Next</button>
             </div>
         `;
     }
 
-    function renderStep3() {
+    function renderStep2Ai() {
         return `
             <h2 id="onboarding-title" class="onboarding-heading">Connect AI Provider</h2>
-            <p class="onboarding-desc">jobagent uses AI to score jobs and tailor resumes. Connect a provider to get started.</p>
+            <p class="onboarding-desc">jobagent uses AI to read your resume, score jobs and tailor applications. Connect a provider to get started.</p>
             <div class="onboarding-form">
                 <div class="onboarding-field">
                     <label for="onb-provider">Provider</label>
@@ -157,13 +134,50 @@ function showOnboardingWizard() {
             </div>
             <div class="onboarding-actions">
                 <button class="btn btn-secondary" id="onb-back">Back</button>
-                <button class="btn btn-ghost" id="onb-skip">Skip</button>
                 <button class="btn btn-primary" id="onb-next">Next</button>
             </div>
         `;
     }
 
-    function renderStep4() {
+    function renderStep3Keywords() {
+        const a = stepData.analysis || {};
+        const terms = (a.search_terms || []).join('\n');
+        const titles = a.job_titles || [];
+        const skills = a.key_skills || [];
+        const titleLines = titles.map(t => {
+            const title = typeof t === 'object' ? (t.title || '') : t;
+            const why = typeof t === 'object' ? (t.why || '') : '';
+            return `<li><strong>${escapeHtml(title)}</strong>${why ? ` — ${escapeHtml(why)}` : ''}</li>`;
+        }).join('');
+        const skillChips = skills.map(s =>
+            `<span class="onboarding-keyword-chip">${escapeHtml(String(s))}</span>`).join('');
+        return `
+            <h2 id="onboarding-title" class="onboarding-heading">Here's what we'll search for</h2>
+            <p class="onboarding-desc">Extracted from your resume. Edit the search terms if you want to widen or narrow the search, then continue.</p>
+            <div class="onboarding-form">
+                <div class="onboarding-field">
+                    <label for="onb-terms">Search terms (one per line)</label>
+                    <textarea id="onb-terms" class="search-input" rows="6" style="width:100%;font-family:inherit">${escapeHtml(terms)}</textarea>
+                </div>
+                ${titleLines ? `
+                <div class="onboarding-field">
+                    <label>Suggested roles</label>
+                    <ul class="onboarding-keyword-list">${titleLines}</ul>
+                </div>` : ''}
+                ${skillChips ? `
+                <div class="onboarding-field">
+                    <label>Key skills</label>
+                    <div class="onboarding-keyword-chips">${skillChips}</div>
+                </div>` : ''}
+            </div>
+            <div class="onboarding-actions">
+                <button class="btn btn-secondary" id="onb-back">Back</button>
+                <button class="btn btn-primary" id="onb-next">Save &amp; Continue</button>
+            </div>
+        `;
+    }
+
+    function renderStep4Done() {
         return `
             <h2 id="onboarding-title" class="onboarding-heading">You're All Set!</h2>
             <p class="onboarding-desc">jobagent is ready to find and match jobs for you. Start your first scrape to discover opportunities.</p>
@@ -181,33 +195,13 @@ function showOnboardingWizard() {
     function attachStepListeners() {
         const next = wizard.querySelector('#onb-next');
         const back = wizard.querySelector('#onb-back');
-        const skip = wizard.querySelector('#onb-skip');
         const scrape = wizard.querySelector('#onb-scrape');
         const later = wizard.querySelector('#onb-later');
 
         if (back) back.addEventListener('click', () => { currentStep--; renderStep(); });
-        if (skip) skip.addEventListener('click', () => { currentStep++; renderStep(); });
 
-        if (currentStep === 0 && next) {
-            const nameInput = wizard.querySelector('#onb-name');
-            if (nameInput) nameInput.focus();
-            next.addEventListener('click', async () => {
-                stepData.name = wizard.querySelector('#onb-name')?.value?.trim() || '';
-                stepData.email = wizard.querySelector('#onb-email')?.value?.trim() || '';
-                stepData.location = wizard.querySelector('#onb-location')?.value?.trim() || '';
-                if (stepData.name || stepData.email) {
-                    try {
-                        await api.request('POST', '/api/profile', {
-                            full_name: stepData.name, email: stepData.email, location: stepData.location
-                        });
-                    } catch {}
-                }
-                currentStep++;
-                renderStep();
-            });
-        }
-
-        if (currentStep === 1) {
+        // --- step 0: resume (required) ------------------------------------
+        if (currentStep === 0) {
             const uploadArea = wizard.querySelector('#onb-upload-area');
             const fileInput = wizard.querySelector('#onb-file');
             const statusEl = wizard.querySelector('#onb-upload-status');
@@ -227,19 +221,39 @@ function showOnboardingWizard() {
             }
 
             async function handleUpload(file) {
-                if (statusEl) statusEl.innerHTML = '<span class="spinner"></span> Uploading...';
+                if (statusEl) statusEl.innerHTML = '<span class="spinner"></span> Uploading &amp; analyzing...';
                 try {
-                    await api.uploadResume(file);
-                    if (statusEl) statusEl.innerHTML = '<span style="color:var(--score-green);font-weight:600">Resume uploaded!</span>';
+                    const result = await api.uploadResume(file);
+                    stepData.resumeUploaded = true;
+                    stepData.analysis = result;
+                    if (next) next.disabled = false;
+                    if (statusEl) {
+                        const n = (result.search_terms || []).length;
+                        statusEl.innerHTML = `<span style="color:var(--score-green);font-weight:600">Resume uploaded!</span>`
+                            + (n ? `<div style="font-size:0.8125rem;color:var(--text-secondary)">We found ${n} search term${n === 1 ? '' : 's'} for you.</div>` : '');
+                    }
                 } catch (err) {
                     if (statusEl) statusEl.innerHTML = `<span style="color:var(--danger)">${escapeHtml(err.message)}</span>`;
                 }
             }
 
-            if (next) next.addEventListener('click', () => { currentStep++; renderStep(); });
+            // A returning user who already has a resume need not re-upload it.
+            api.request('GET', '/api/resumes').then(data => {
+                if ((data.resumes || []).length > 0) {
+                    stepData.resumeUploaded = true;
+                    if (next) next.disabled = false;
+                    if (statusEl) statusEl.innerHTML = '<span style="color:var(--text-secondary)">You already have a resume on file.</span>';
+                }
+            }).catch(() => {});
+
+            if (next) next.addEventListener('click', () => {
+                if (!stepData.resumeUploaded) return;
+                currentStep++; renderStep();
+            });
         }
 
-        if (currentStep === 2) {
+        // --- step 1: AI provider ------------------------------------------
+        if (currentStep === 1) {
             const providerSelect = wizard.querySelector('#onb-provider');
             const keyField = wizard.querySelector('#onb-key-field');
             const ollamaField = wizard.querySelector('#onb-ollama-field');
@@ -291,12 +305,43 @@ function showOnboardingWizard() {
                             await api.updateAISettings(payload);
                         } catch {}
                     }
-                    currentStep++;
-                    renderStep();
+                    currentStep++; renderStep();
                 });
             }
         }
 
+        // --- step 2: confirm / edit keywords ------------------------------
+        if (currentStep === 2) {
+            if (!stepData.analysis) {
+                // Re-run path: prefill from whatever is already saved.
+                api.getSearchConfig().then(cfg => {
+                    stepData.analysis = {
+                        search_terms: cfg.search_terms || [],
+                        job_titles: cfg.job_titles || [],
+                        key_skills: cfg.key_skills || [],
+                    };
+                    renderStep();
+                }).catch(() => {});
+            }
+
+            if (next) {
+                next.addEventListener('click', async () => {
+                    const raw = wizard.querySelector('#onb-terms')?.value || '';
+                    const terms = raw.split('\n').map(t => t.trim()).filter(Boolean);
+                    const a = stepData.analysis || {};
+                    try {
+                        await api.updateSearchKeywords({
+                            search_terms: terms,
+                            job_titles: a.job_titles || [],
+                            key_skills: a.key_skills || [],
+                        });
+                    } catch {}
+                    currentStep++; renderStep();
+                });
+            }
+        }
+
+        // --- step 3: done --------------------------------------------------
         if (currentStep === 3) {
             const summaryEl = wizard.querySelector('#onb-summary');
             if (summaryEl) {
@@ -327,7 +372,7 @@ function showOnboardingWizard() {
             }
         }
 
-        // Keyboard: Escape to skip
+        // Keyboard: Escape skips (but the resume step is still required for search).
         wizard.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 e.stopPropagation();
