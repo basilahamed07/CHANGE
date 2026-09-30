@@ -23,7 +23,10 @@ from app.scrapers.base import BaseScraper, validate_url
 logger = logging.getLogger(__name__)
 
 API_BASE = "https://api.ashbyhq.com/posting-api/job-board/{token}?includeCompensation=true"
-DEFAULT_COMPANIES = ["linear", "ramp", "deel", "walkaway", "openai"]
+# NOTE: 'walkaway' removed 2026-09-28 — its board 404s permanently (dead
+# company), which turned every Ashby discovery pass into SOURCE_FAILURE.
+# Boards are verified live before being listed here (M4 discipline).
+DEFAULT_COMPANIES = ["linear", "ramp", "deel", "openai"]
 
 
 class AshbyAdapter(JobSourceAdapter, BaseScraper):

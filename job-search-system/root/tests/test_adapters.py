@@ -176,3 +176,127 @@ async def test_discovery_cycle_cross_source_dedup(tmp_path):
     assert n_jobs == 1, f"expected 1 job, got {n_jobs}"
     assert n_sources == 2, f"expected 2 source rows, got {n_sources}"
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_insert_source_is_idempotent(tmp_path):
+    """DB-layer guard (2026-09-28): re-attributing the same (job, source, url)
+    must never stack rows — live, job 1906 had 3 identical wellfound rows."""
+    from app.database import Database
+
+    db = Database(str(tmp_path / "t.db"))
+    await db.init()
+    jid = await db.insert_job(
+        title="AI Engineer", company="SrcCo", location="Berlin, Germany",
+        salary_min=None, salary_max=None, description="d",
+        url="https://x/1", posted_date=None,
+        application_method="direct", contact_email=None)
+    assert jid
+    for _ in range(3):
+        await db.insert_source(jid, "wellfound", "https://x/1")
+    row = await db.db.execute("SELECT COUNT(*) FROM sources WHERE job_id=?", (jid,))
+    assert (await row.fetchone())[0] == 1
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_discovery_resee_is_honest_not_new(tmp_path):
+    """Re-running discovery on already-pooled jobs must NOT count them as new,
+    must NOT stack duplicate sources rows, and must not re-record freshness.
+
+    Found live 2026-09-28 (Basil's workspace): job 1906 accumulated 3 identical
+    wellfound sources rows and run-2 telemetry reported new=2 for jobs that
+    were ingested by run-1.
+    """
+    from app.database import Database
+    from app.discovery import run_discovery_cycle
+    from app.country_registry import CountryRegistry
+
+    class SingleSrc(_StubAdapter):
+        source_name = "single"
+
+    db = Database(str(tmp_path / "t.db"))
+    await db.init()
+    registry = CountryRegistry("config/countries").load()
+    await db.update_allowed_regions(
+        registry.enabled_region_names() + ["Remote"])
+
+    first = await run_discovery_cycle(db, registry, [SingleSrc])
+    second = await run_discovery_cycle(db, registry, [SingleSrc])
+
+    # The stub emits the SAME canonical job (title+company+city) for both
+    # default terms — the URL differs but URL is NOT identity — so exactly
+    # one job row exists with one source row.
+    row = await db.db.execute("SELECT COUNT(*) FROM jobs")
+    assert (await row.fetchone())[0] == 1
+    assert first["new_jobs"] == 1
+
+    # the re-sweep changes NOTHING in the pool and reports honestly:
+    row = await db.db.execute("SELECT COUNT(*) FROM jobs")
+    assert (await row.fetchone())[0] == 1  # pool unchanged
+    row = await db.db.execute("SELECT COUNT(*) FROM sources")
+    assert (await row.fetchone())[0] == 1  # attribution did NOT stack
+    assert second["new_jobs"] == 0, (
+        f"re-see must not be counted as new; got {second['new_jobs']}")
+    assert second["duplicates_seen"] >= 1  # re-sees are counted as dupes
+
+    # freshness evidence was recorded exactly once (run 1 only)
+    row = await db.db.execute(
+        "SELECT COUNT(*) FROM jobs WHERE freshness_evidence IS NOT NULL")
+    assert (await row.fetchone())[0] == 1
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_discovery_cross_source_dupe_resee_stays_merged(tmp_path):
+    """A cross-source duplicate (same title+company, different URL) is merged
+    into the oldest row + dismissed + repost-linked on first sight; a LATER
+    cycle seeing the same listing again must not duplicate any of that."""
+    from app.database import Database
+    from app.discovery import run_discovery_cycle
+    from app.country_registry import CountryRegistry
+
+    class SrcA(_StubAdapter):
+        source_name = "srca"
+
+    class SrcBDiffUrl(_StubAdapter):
+        source_name = "srcb"
+
+        async def search(self, role_terms, country=None):
+            # Same company as SrcA's listing but a different board formatting
+            # ('DupCo Inc' normalizes to 'dupco', same as 'DupCo') and a
+            # different URL — the classic cross-source duplicate shape.
+            return AdapterResult(source=self.source_name, listings=[
+                CanonicalJob(
+                    title="AI Engineer", company="DupCo Inc", location="Berlin, Germany",
+                    description="d", url="https://other-source/ai-engineer/1",
+                    source="srcb"),
+            ], stop_reason="NO_MORE_RESULTS")
+
+    db = Database(str(tmp_path / "t.db"))
+    await db.init()
+    registry = CountryRegistry("config/countries").load()
+    await db.update_allowed_regions(
+        registry.enabled_region_names() + ["Remote"])
+
+    first = await run_discovery_cycle(db, registry, [SrcA, SrcBDiffUrl])
+    second = await run_discovery_cycle(db, registry, [SrcA, SrcBDiffUrl])
+
+    # 2 rows total: the alive original (company 'DupCo') + the dismissed dupe
+    # (company 'DupCo Inc' — the row keeps the listing's own company string).
+    row = await db.db.execute(
+        "SELECT COUNT(*) FROM jobs WHERE LOWER(company) IN ('dupco', 'dupco inc')")
+    assert (await row.fetchone())[0] == 2  # no growth on the second cycle
+    row = await db.db.execute(
+        "SELECT COUNT(*) FROM jobs WHERE dismissed=1 AND LOWER(company)='dupco inc'")
+    assert (await row.fetchone())[0] == 1  # still exactly one dismissed dupe
+    row = await db.db.execute("SELECT COUNT(*) FROM job_duplicates")
+    assert (await row.fetchone())[0] == 1  # repost edge recorded once
+    # both sources attributed to the ALIVE original, no stacking across runs
+    row = await db.db.execute(
+        """SELECT source_name, COUNT(*) c FROM sources s JOIN jobs j ON s.job_id=j.id
+           WHERE j.company='DupCo' AND j.dismissed=0 GROUP BY source_name""")
+    attrs = {r["source_name"]: r["c"] for r in await row.fetchall()}
+    assert attrs == {"srca": 1, "srcb": 1}, f"unexpected attribution: {attrs}"
+    assert first["new_jobs"] == 1 and second["new_jobs"] == 0
+    await db.close()

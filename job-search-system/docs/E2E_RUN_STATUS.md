@@ -5,9 +5,15 @@
 > `docs/USER_JOURNEY_E2E_REPORT.md` (rewritten on every harness run) and the raw
 > evidence lives in `analysis/e2e_runs/<date>_<time>/`.
 
-**Last updated:** 2026-09-28 — N1 per-user Gmail tokens DONE (code + 4 real-scenario
-tests, committed; NEXT_5_PLAN.md progress board updated). Resume-first onboarding
-gate + discovery expansion reports below date from 2026-09-27 / 2026-09-28. Latest
+**Last updated:** 2026-09-28 — **Discovery phase verified LIVE as Basil: 22/22 checks GREEN**
+(`analysis/verify_discovery_basil.py` → `docs/DISCOVERY_PHASE_LIVE_VERIFICATION.md`).
+3 real bugs found & fixed by running the product: sources-row stacking on re-see
+(1,505 legacy dup rows cleaned; `insert_source` now idempotent), discovery re-see
+telemetry counted old jobs as new (now honest: new=0 dupes=32 on a re-sweep), and
+dead Ashby board `walkaway` 404ing every pass (removed). 47/47 ingest-related tests
+green. Earlier today: N1 per-user Gmail tokens DONE (code + 4 real-scenario tests,
+committed; NEXT_5_PLAN.md progress board updated). Resume-first onboarding gate +
+discovery expansion reports below date from 2026-09-27 / 2026-09-28. Latest
 user-journey harness run remains `2026-09-24_125119` (definitive, config-isolated).
 
 ---

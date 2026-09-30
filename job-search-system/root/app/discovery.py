@@ -66,6 +66,11 @@ async def run_discovery_cycle(db, registry, all_adapters, ai_client=None,
         budget = max(1, min(int(max_passes), MAX_REQUEST_PASSES_PER_CYCLE))
     telemetry["pass_budget"] = budget
     seen_hashes: set[str] = set()
+    # High-water mark BEFORE any ingest this cycle: insert_job returns the
+    # existing id for a re-see, so "id > mark" distinguishes genuinely NEW
+    # rows from re-seen ones (telemetry honesty; see re-see handling below).
+    _max_row = await db.db.execute("SELECT COALESCE(MAX(id), 0) FROM jobs")
+    pre_cycle_max_id = (await _max_row.fetchone())[0]
 
     for country in countries:
         if budget <= 0:
@@ -132,6 +137,14 @@ async def run_discovery_cycle(db, registry, all_adapters, ai_client=None,
                     if not job_id:
                         dupes += 1
                         continue
+                    # NEW-row vs re-see: insert_job returns the EXISTING id when
+                    # the dedup hash is already in the pool (INSERT OR IGNORE +
+                    # hash lookup). A re-see must NOT re-attribute the source
+                    # (duplicate sources rows) nor count as a new job — only
+                    # last_seen_at is refreshed. Found live 2026-09-28: re-running
+                    # discovery counted already-pooled jobs as new and stacked 3
+                    # identical sources rows per job (wellfound x3 on job 1906).
+                    was_new = job_id > pre_cycle_max_id
                     # Cross-source identity: same title+company (fuzzy) already
                     # live from ANOTHER source → attribute source to the oldest
                     # row and dismiss this duplicate (same merge policy as the
@@ -139,22 +152,31 @@ async def run_discovery_cycle(db, registry, all_adapters, ai_client=None,
                     cross_dupes = await db.find_cross_source_dupes(job_id, job.title, job.company)
                     if cross_dupes:
                         oldest = cross_dupes[0]
-                        await db.insert_source(oldest["id"], job.source, job.url)
-                        await db.dismiss_job(job_id)
+                        if was_new:
+                            await db.insert_source(oldest["id"], job.source, job.url)
+                            await db.dismiss_job(job_id)
+                            # M5: record the repost edge (repost graph, audit + UI)
+                            await db.add_duplicate_link(
+                                oldest["id"], job_id,
+                                f"cross-source:{job.source}")
                         await db.update_last_seen(oldest["id"])
-                        # M5: record the repost edge (repost graph, audit + UI)
-                        await db.add_duplicate_link(
-                            oldest["id"], job_id,
-                            f"cross-source:{job.source}")
                         dupes += 1
                     else:
+                        # insert_source is idempotent per (job, source, url):
+                        # a re-see is a no-op there, so attribution never stacks.
                         await db.insert_source(job_id, job.source, job.url)
-                        await db.update_last_seen(job_id)
-                        # M5: freshness evidence recorded at ingest (audit trail)
-                        from app.freshness import assess_freshness
-                        await db.record_freshness(
-                            job_id, assess_freshness(job.posted_date))
-                        ingested += 1
+                        if was_new:
+                            # M5: freshness evidence recorded at ingest (audit trail)
+                            from app.freshness import assess_freshness
+                            await db.record_freshness(
+                                job_id, assess_freshness(job.posted_date))
+                            ingested += 1
+                        else:
+                            # Re-see of a job already pooled from this source:
+                            # refresh last_seen only, and count it honestly as a
+                            # duplicate — NOT as a new job (telemetry honesty).
+                            await db.update_last_seen(job_id)
+                            dupes += 1
 
                 pass_rec["ingested"] = ingested
                 pass_rec["duplicates"] = dupes

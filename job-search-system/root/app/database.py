@@ -1002,9 +1002,19 @@ class Database:
         return dict(row) if row else None
 
     async def insert_source(self, job_id, source_name, source_url):
+        # Attribute-once invariant (2026-09-28): identical (job, source, url)
+        # attribution must never stack rows when a source re-sees the same
+        # listing across cycles. Found live: job 1906 had 3 identical wellfound
+        # rows after repeated discovery runs. Self-heals any historical dupes
+        # only by not adding new ones; legacy rows are untouched.
         await self.db.execute(
-            "INSERT INTO sources (job_id, source_name, source_url) VALUES (?, ?, ?)",
-            (job_id, source_name, source_url)
+            """INSERT INTO sources (job_id, source_name, source_url)
+               SELECT ?, ?, ?
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM sources
+                   WHERE job_id = ? AND source_name = ? AND source_url = ?
+               )""",
+            (job_id, source_name, source_url, job_id, source_name, source_url),
         )
         await self.db.commit()
 
