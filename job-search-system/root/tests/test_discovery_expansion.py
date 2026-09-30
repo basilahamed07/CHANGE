@@ -39,12 +39,16 @@ def _germany():
 
 # ---------------- registry / registration ----------------
 
-def test_nineteen_adapters_registered():
-    assert len(ALL_ADAPTERS) == 19
+def test_adapters_registered_count():
+    # Stage-1 upgrade 2026-09-30: 19 → 20 — the audit found builtin.py's
+    # scraper existed since M1 but was never wired into discovery; the
+    # BuiltinAdapter closes that gap (CA/US tech-city coverage).
+    assert len(ALL_ADAPTERS) == 20
     assert {"greenhouse", "lever", "ashby", "smartrecruiters",
             "jooble", "adzuna", "reed", "arbeitnow", "remotive", "jobicy",
             "weworkremotely", "remoteok", "himalayas", "4dayweek",
             "landingjobs", "recruitee", "mycareersfuture", "wellfound",
+            "builtin",
             "workingnomads"} == SOURCE_NAMES
 
 

@@ -1,0 +1,256 @@
+{
+  "code": "SG",
+  "region": "Singapore",
+  "sources_attempted": 20,
+  "raw_jobs": 157,
+  "unique_jobs": 82,
+  "duplicates": 21,
+  "new_jobs_total_pool": 82,
+  "by_status": {
+    "PASS": 7,
+    "NO_RESULTS": 9,
+    "NOT_APPLICABLE": 2,
+    "CONFIGURATION_REQUIRED": 2
+  },
+  "by_source": {
+    "greenhouse": {
+      "found": 50,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "lever": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "ashby": {
+      "found": 2,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "smartrecruiters": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "recruitee": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "mycareersfuture": {
+      "found": 100,
+      "ingested": 81,
+      "status": "PASS"
+    },
+    "arbeitnow": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "reed": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "jooble": {
+      "found": 0,
+      "ingested": 0,
+      "status": "CONFIGURATION_REQUIRED"
+    },
+    "adzuna": {
+      "found": 0,
+      "ingested": 0,
+      "status": "CONFIGURATION_REQUIRED"
+    },
+    "wellfound": {
+      "found": 2,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "remotive": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "jobicy": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "himalayas": {
+      "found": 1,
+      "ingested": 1,
+      "status": "PASS"
+    },
+    "workingnomads": {
+      "found": 1,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "landingjobs": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "builtin": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "weworkremotely": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "remoteok": {
+      "found": 1,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "4dayweek": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    }
+  },
+  "coverage_buckets": {
+    "GLOBAL": 1,
+    "LOCAL": 0,
+    "TECH_STARTUP": 3,
+    "GOVERNMENT": 1,
+    "ATS": 5,
+    "REMOTE": 7,
+    "AGGREGATOR": 1
+  },
+  "coverage_status": "FULL",
+  "duration_s": 147.6,
+  "crashed": null,
+  "generated_at": "2026-09-30T10:42:31Z",
+  "search_terms": [
+    "AI Engineer",
+    "Machine Learning Engineer"
+  ],
+  "sample_jobs": [
+    {
+      "id": 240,
+      "title": "CEO Office - AI Neobank App",
+      "company": "Bjak",
+      "location": "Singapore",
+      "posted_date": "2026-09-30",
+      "url": "https://himalayas.app/companies/bjak/jobs/ceo-office-ai-neobank-app-7415373484",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 238,
+      "title": "Senior AI Engineer",
+      "company": "DIGITAL PLACE VISION PTE. LTD.",
+      "location": "Singapore",
+      "posted_date": "2026-09-22",
+      "url": "https://www.mycareersfuture.gov.sg/job/7e9420f6fda9d33a40d0c95c13e99b35",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 237,
+      "title": "AI Engineer",
+      "company": "MERIDIAN & SATURN CAPITAL PTE. LTD.",
+      "location": "Singapore",
+      "posted_date": "2026-09-23",
+      "url": "https://www.mycareersfuture.gov.sg/job/444caa99ba87090a0f3666311c2503ab",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 236,
+      "title": "AI Engineer",
+      "company": "PERSOL SINGAPORE PTE. LTD.",
+      "location": "Singapore",
+      "posted_date": "2026-09-28",
+      "url": "https://www.mycareersfuture.gov.sg/job/305f009e3ebe2e034b138b1c4061a407",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 235,
+      "title": "Ai Engineer (Contract to Perm)",
+      "company": "HAYS SPECIALIST RECRUITMENT PTE. LTD.",
+      "location": "Singapore",
+      "posted_date": "2026-09-14",
+      "url": "https://www.mycareersfuture.gov.sg/job/9c1c54fab37e3a2326b8acac77ca8810",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 234,
+      "title": "Agentic AI Engineer",
+      "company": "ASTEK SINGAPORE INNOVATION TECHNOLOGY PTE. LTD.",
+      "location": "Singapore",
+      "posted_date": "2026-09-15",
+      "url": "https://www.mycareersfuture.gov.sg/job/0e70059def9ef2df42997bcf64a987af",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 233,
+      "title": "Senior AI Engineer",
+      "company": "OMIO TRAVEL SINGAPORE PTE. LTD.",
+      "location": "Singapore",
+      "posted_date": "2026-09-24",
+      "url": "https://www.mycareersfuture.gov.sg/job/cdb88bf3397cd6aab8a5a6e9d011ebaf",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 232,
+      "title": "ML & AI Engineer",
+      "company": "OPTIMUM SOLUTIONS (SINGAPORE) PTE LTD",
+      "location": "Singapore",
+      "posted_date": "2026-09-28",
+      "url": "https://www.mycareersfuture.gov.sg/job/a47ae2dd2641413054834f9290b14073",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 231,
+      "title": "AI Engineer",
+      "company": "ET MARKETING PTE. LTD.",
+      "location": "Singapore",
+      "posted_date": "2026-09-02",
+      "url": "https://www.mycareersfuture.gov.sg/job/2b42c8b4a0b4d301a4cfa53ba7e1d387",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 230,
+      "title": "Senior AI Engineer - AI Agents / RAG / Fine-Tuning",
+      "company": "MAGELLAN GLOBAL PTE. LTD.",
+      "location": "Singapore",
+      "posted_date": "2026-09-28",
+      "url": "https://www.mycareersfuture.gov.sg/job/d8522cb85553756605947959c5bbe464",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 229,
+      "title": "AI Engineer",
+      "company": "HYDRAX DIGITAL ASSETS PTE. LTD.",
+      "location": "Singapore",
+      "posted_date": "2026-09-14",
+      "url": "https://www.mycareersfuture.gov.sg/job/56d145ca4d9632687b725572de3f6bd5",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 228,
+      "title": "AI Engineer",
+      "company": "HYDRAX PTE. LTD.",
+      "location": "Singapore",
+      "posted_date": "2026-09-14",
+      "url": "https://www.mycareersfuture.gov.sg/job/83fc774aace5d2f4e51478ad2fd38284",
+      "canonical_source": null,
+      "source_types": null
+    }
+  ]
+}

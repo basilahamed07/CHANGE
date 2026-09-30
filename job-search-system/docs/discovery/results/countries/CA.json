@@ -1,0 +1,256 @@
+{
+  "code": "CA",
+  "region": "Canada",
+  "sources_attempted": 20,
+  "raw_jobs": 179,
+  "unique_jobs": 29,
+  "duplicates": 8,
+  "new_jobs_total_pool": 29,
+  "by_status": {
+    "PASS": 7,
+    "NO_RESULTS": 8,
+    "NOT_APPLICABLE": 3,
+    "CONFIGURATION_REQUIRED": 2
+  },
+  "by_source": {
+    "greenhouse": {
+      "found": 153,
+      "ingested": 25,
+      "status": "PASS"
+    },
+    "lever": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "ashby": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "smartrecruiters": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "recruitee": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "mycareersfuture": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "arbeitnow": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "reed": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "jooble": {
+      "found": 0,
+      "ingested": 0,
+      "status": "CONFIGURATION_REQUIRED"
+    },
+    "adzuna": {
+      "found": 0,
+      "ingested": 0,
+      "status": "CONFIGURATION_REQUIRED"
+    },
+    "wellfound": {
+      "found": 8,
+      "ingested": 2,
+      "status": "PASS"
+    },
+    "remotive": {
+      "found": 2,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "jobicy": {
+      "found": 6,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "himalayas": {
+      "found": 2,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "workingnomads": {
+      "found": 6,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "landingjobs": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "builtin": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "weworkremotely": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "remoteok": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "4dayweek": {
+      "found": 2,
+      "ingested": 2,
+      "status": "PASS"
+    }
+  },
+  "coverage_buckets": {
+    "GLOBAL": 1,
+    "LOCAL": 0,
+    "TECH_STARTUP": 3,
+    "GOVERNMENT": 0,
+    "ATS": 5,
+    "REMOTE": 7,
+    "AGGREGATOR": 1
+  },
+  "coverage_status": "FULL",
+  "duration_s": 161.6,
+  "crashed": null,
+  "generated_at": "2026-09-30T10:42:31Z",
+  "search_terms": [
+    "AI Engineer",
+    "Machine Learning Engineer"
+  ],
+  "sample_jobs": [
+    {
+      "id": 43,
+      "title": "Staff Product Engineer, Agentic Identity & Governance, AI Platform",
+      "company": "Redpanda",
+      "location": "United States; Canada; Poland (Remote)",
+      "posted_date": "2026-09-29",
+      "url": "https://4dayweek.io/job/staff-software-engineer-identity-and-access-ai-platform-at-redpanda-032d9abb",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 42,
+      "title": "Senior Product Engineer, Out-of-Band Policy Engine, AI Platform",
+      "company": "Redpanda",
+      "location": "United States; Canada; Poland (Remote)",
+      "posted_date": "2026-09-30",
+      "url": "https://4dayweek.io/job/senior-product-engineer-out-of-band-policy-engine-ai-platform-at-redpanda-e008a493",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 41,
+      "title": "Machine Learning Engineer, Underwriting",
+      "company": "Bree Technologies (YC21)",
+      "location": "Canada",
+      "posted_date": null,
+      "url": "https://wellfound.com/jobs/4203314-machine-learning-engineer-underwriting",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 40,
+      "title": "Machine Learning Engineer",
+      "company": "Bree Technologies (YC21)",
+      "location": "Toronto",
+      "posted_date": null,
+      "url": "https://wellfound.com/jobs/4047565-machine-learning-engineer",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 39,
+      "title": "Manager, Engineering - AI/BI",
+      "company": "databricks",
+      "location": "Vancouver, Canada",
+      "posted_date": "2026-09-21",
+      "url": "https://databricks.com/company/careers/open-positions/job?gh_jid=8176503002",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 38,
+      "title": "Backend Engineer, Control Plane",
+      "company": "tailscale",
+      "location": "Remote (Canada)",
+      "posted_date": "2026-09-29",
+      "url": "https://job-boards.greenhouse.io/tailscale/jobs/4733177005",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 37,
+      "title": "Staff Backend Engineer - Mimir Query, Databases | Canada | Remote",
+      "company": "grafanalabs",
+      "location": "Canada (Remote)",
+      "posted_date": "2026-09-17",
+      "url": "https://job-boards.greenhouse.io/grafanalabs/jobs/6146605004",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 36,
+      "title": "Staff Backend Engineer - Grafana Enterprise | Canada | Remote",
+      "company": "grafanalabs",
+      "location": "Canada (Remote)",
+      "posted_date": "2026-07-09",
+      "url": "https://job-boards.greenhouse.io/grafanalabs/jobs/6007413004",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 35,
+      "title": "Staff Backend Engineer - Grafana App Platform | Canada | Remote",
+      "company": "grafanalabs",
+      "location": "Canada (Remote)",
+      "posted_date": "2026-09-18",
+      "url": "https://job-boards.greenhouse.io/grafanalabs/jobs/5988483004",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 34,
+      "title": "Staff Backend Engineer - Databases Tempo | Canada | Remote",
+      "company": "grafanalabs",
+      "location": "Canada (Remote)",
+      "posted_date": "2026-09-18",
+      "url": "https://job-boards.greenhouse.io/grafanalabs/jobs/5982443004",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 33,
+      "title": "Staff Backend Engineer - Analytics | Canada | Remote",
+      "company": "grafanalabs",
+      "location": "Canada (Remote)",
+      "posted_date": "2026-09-21",
+      "url": "https://job-boards.greenhouse.io/grafanalabs/jobs/6111473004",
+      "canonical_source": "greenhouse",
+      "source_types": "{\"greenhouse\": \"ATS\"}"
+    },
+    {
+      "id": 32,
+      "title": "Staff AI Engineer | Canada | Remote",
+      "company": "grafanalabs",
+      "location": "Canada (Remote)",
+      "posted_date": "2026-08-11",
+      "url": "https://job-boards.greenhouse.io/grafanalabs/jobs/6092954004",
+      "canonical_source": null,
+      "source_types": null
+    }
+  ]
+}

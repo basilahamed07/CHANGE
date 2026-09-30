@@ -1,0 +1,293 @@
+{
+  "generated_at": "2026-09-30T10:42:31Z",
+  "countries": [
+    "AE",
+    "AU",
+    "CA",
+    "DE",
+    "GB",
+    "IE",
+    "IN",
+    "NL",
+    "PL",
+    "SG"
+  ],
+  "adapters": [
+    "greenhouse",
+    "lever",
+    "ashby",
+    "smartrecruiters",
+    "jooble",
+    "adzuna",
+    "reed",
+    "arbeitnow",
+    "remotive",
+    "jobicy",
+    "weworkremotely",
+    "remoteok",
+    "himalayas",
+    "4dayweek",
+    "landingjobs",
+    "recruitee",
+    "mycareersfuture",
+    "wellfound",
+    "workingnomads",
+    "builtin"
+  ],
+  "registry_sources": [
+    {
+      "name": "greenhouse",
+      "source_type": "ATS",
+      "tier": 1,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 10,
+      "notes": "4 ATS boards, keyless public APIs"
+    },
+    {
+      "name": "lever",
+      "source_type": "ATS",
+      "tier": 1,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 11,
+      "notes": "verified-live boards (spotify, palantir)"
+    },
+    {
+      "name": "ashby",
+      "source_type": "ATS",
+      "tier": 1,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 12,
+      "notes": "linear/ramp/deel/openai boards"
+    },
+    {
+      "name": "smartrecruiters",
+      "source_type": "ATS",
+      "tier": 1,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 13,
+      "notes": "visa/audi/bosch/siemens/sap boards"
+    },
+    {
+      "name": "recruitee",
+      "source_type": "ATS",
+      "tier": 1,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 14,
+      "notes": "EU-heavy per-company boards"
+    },
+    {
+      "name": "mycareersfuture",
+      "source_type": "GOVERNMENT",
+      "tier": 1,
+      "countries": [
+        "SG"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 20,
+      "notes": "Singapore govt jobs portal (official)"
+    },
+    {
+      "name": "arbeitnow",
+      "source_type": "LOCAL_BOARD",
+      "tier": 1,
+      "countries": [
+        "DE"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 21,
+      "notes": "Germany-native board, keyless API, 3 pages"
+    },
+    {
+      "name": "reed",
+      "source_type": "LOCAL_BOARD",
+      "tier": 1,
+      "countries": [
+        "GB"
+      ],
+      "access": "API_KEY",
+      "enabled": true,
+      "priority": 22,
+      "notes": "UK's largest board; official API \u2014 key pending"
+    },
+    {
+      "name": "jooble",
+      "source_type": "AGGREGATOR",
+      "tier": 2,
+      "countries": [
+        "*"
+      ],
+      "access": "API_KEY",
+      "enabled": true,
+      "priority": 30,
+      "notes": "localized boards in all 10 configured countries \u2014 highest-leverage keyed source"
+    },
+    {
+      "name": "adzuna",
+      "source_type": "GLOBAL_BOARD",
+      "tier": 2,
+      "countries": [
+        "*"
+      ],
+      "access": "API_KEY",
+      "enabled": true,
+      "priority": 31,
+      "notes": "per-country markets (de/nl/ie/gb/in/ca/au/pl/ae/sg)"
+    },
+    {
+      "name": "wellfound",
+      "source_type": "STARTUP_BOARD",
+      "tier": 2,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 32,
+      "notes": "startup/AI roles (AngelList)"
+    },
+    {
+      "name": "remotive",
+      "source_type": "REMOTE_BOARD",
+      "tier": 2,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 33,
+      "notes": "remote w/ per-country location strings"
+    },
+    {
+      "name": "jobicy",
+      "source_type": "REMOTE_BOARD",
+      "tier": 2,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 34,
+      "notes": "remote w/ jobGeo strings"
+    },
+    {
+      "name": "himalayas",
+      "source_type": "REMOTE_BOARD",
+      "tier": 2,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 35,
+      "notes": "remote, country-requirement field"
+    },
+    {
+      "name": "workingnomads",
+      "source_type": "REMOTE_BOARD",
+      "tier": 2,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 36,
+      "notes": "remote API feed"
+    },
+    {
+      "name": "landingjobs",
+      "source_type": "TECH_BOARD",
+      "tier": 2,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 37,
+      "notes": "EU tech jobs"
+    },
+    {
+      "name": "builtin",
+      "source_type": "TECH_BOARD",
+      "tier": 2,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 38,
+      "notes": "US/Canada tech-city boards"
+    },
+    {
+      "name": "weworkremotely",
+      "source_type": "REMOTE_BOARD",
+      "tier": 3,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 40,
+      "notes": "RSS; weakest geo signal"
+    },
+    {
+      "name": "remoteok",
+      "source_type": "REMOTE_BOARD",
+      "tier": 3,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 41,
+      "notes": "remote API feed"
+    },
+    {
+      "name": "4dayweek",
+      "source_type": "REMOTE_BOARD",
+      "tier": 3,
+      "countries": [
+        "*"
+      ],
+      "access": "PUBLIC",
+      "enabled": true,
+      "priority": 42,
+      "notes": "4-day-week remote roles"
+    }
+  ],
+  "totals": {
+    "sources_attempted": 200,
+    "sources_successful": 53,
+    "raw_jobs": 1058,
+    "unique_jobs": 194,
+    "duplicates_removed": 73,
+    "duration_s": 1390.2
+  },
+  "by_status": {
+    "CONFIGURATION_REQUIRED": 21,
+    "NOT_APPLICABLE": 27,
+    "NO_RESULTS": 99,
+    "PASS": 53
+  }
+}

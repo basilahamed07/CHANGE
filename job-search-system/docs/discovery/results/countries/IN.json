@@ -1,0 +1,256 @@
+{
+  "code": "IN",
+  "region": "India",
+  "sources_attempted": 20,
+  "raw_jobs": 217,
+  "unique_jobs": 38,
+  "duplicates": 12,
+  "new_jobs_total_pool": 38,
+  "by_status": {
+    "PASS": 5,
+    "NO_RESULTS": 10,
+    "NOT_APPLICABLE": 3,
+    "CONFIGURATION_REQUIRED": 2
+  },
+  "by_source": {
+    "greenhouse": {
+      "found": 181,
+      "ingested": 15,
+      "status": "PASS"
+    },
+    "lever": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "ashby": {
+      "found": 1,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "smartrecruiters": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "recruitee": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "mycareersfuture": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "arbeitnow": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "reed": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "jooble": {
+      "found": 0,
+      "ingested": 0,
+      "status": "CONFIGURATION_REQUIRED"
+    },
+    "adzuna": {
+      "found": 0,
+      "ingested": 0,
+      "status": "CONFIGURATION_REQUIRED"
+    },
+    "wellfound": {
+      "found": 12,
+      "ingested": 3,
+      "status": "PASS"
+    },
+    "remotive": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "jobicy": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "himalayas": {
+      "found": 2,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "workingnomads": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "landingjobs": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "builtin": {
+      "found": 21,
+      "ingested": 20,
+      "status": "PASS"
+    },
+    "weworkremotely": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "remoteok": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "4dayweek": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    }
+  },
+  "coverage_buckets": {
+    "GLOBAL": 1,
+    "LOCAL": 0,
+    "TECH_STARTUP": 3,
+    "GOVERNMENT": 0,
+    "ATS": 5,
+    "REMOTE": 7,
+    "AGGREGATOR": 1
+  },
+  "coverage_status": "FULL",
+  "duration_s": 128.7,
+  "crashed": null,
+  "generated_at": "2026-09-30T10:42:31Z",
+  "search_terms": [
+    "AI Engineer",
+    "Machine Learning Engineer"
+  ],
+  "sample_jobs": [
+    {
+      "id": 142,
+      "title": "Principal Engineer- Java Fullstack -Generative AI",
+      "company": "Wells Fargo",
+      "location": "Bengaluru, Karnataka",
+      "posted_date": "2026-09-25",
+      "url": "https://builtin.com/job/principal-engineer-java-fullstack-generative-ai/11367322",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 141,
+      "title": "Lead Software Engineer Java Spring boor Gen AI",
+      "company": "JPMorganChase",
+      "location": "Mumbai, Maharashtra",
+      "posted_date": "2026-09-25",
+      "url": "https://builtin.com/job/lead-software-engineer-java-spring-boor-gen-ai/11369650",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 140,
+      "title": "Senior Software Engineer - Senior AI Engineer",
+      "company": "Wells Fargo",
+      "location": "Hyderabad, Telangana",
+      "posted_date": "2026-09-26",
+      "url": "https://builtin.com/job/senior-software-engineer-senior-ai-engineer/11384874",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 139,
+      "title": "Lead AI/ML Engineer",
+      "company": "Optum",
+      "location": "Gurugram, Haryana",
+      "posted_date": "2026-09-26",
+      "url": "https://builtin.com/job/lead-ai-ml-engineer/11386242",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 138,
+      "title": "Lead AI Engineer",
+      "company": "Capital One",
+      "location": "Bengaluru, Karnataka",
+      "posted_date": "2026-09-26",
+      "url": "https://builtin.com/job/lead-ai-engineer/10495082",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 137,
+      "title": "Experienced Software Engineer-AI Application",
+      "company": "Boeing",
+      "location": "Bengaluru, Karnataka",
+      "posted_date": "2026-09-27",
+      "url": "https://builtin.com/job/experienced-software-engineer-ai-application/11387110",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 136,
+      "title": "SR AI Engineer",
+      "company": "Micron Technology",
+      "location": "Hyderabad, Telangana",
+      "posted_date": "2026-09-27",
+      "url": "https://builtin.com/job/sr-ai-engineer/10938821",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 135,
+      "title": "Firmware Validation Engineer (Python - AI, Automation)",
+      "company": "Hewlett Packard Enterprise",
+      "location": "Bengaluru, Karnataka",
+      "posted_date": "2026-09-28",
+      "url": "https://builtin.com/job/firmware-validation-engineer-python-ai-automation/11388045",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 134,
+      "title": "Advisor -AI Security Engineer",
+      "company": "TransUnion",
+      "location": "Bengaluru, Karnataka",
+      "posted_date": "2026-09-28",
+      "url": "https://builtin.com/job/advisor-ai-security-engineer/10715010",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 133,
+      "title": "AI/ML Engineer",
+      "company": "Hewlett Packard Enterprise",
+      "location": "Bengaluru, Karnataka",
+      "posted_date": "2026-09-28",
+      "url": "https://builtin.com/job/ai-ml-engineer/11391055",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 132,
+      "title": "VP - Sr Lead Software Engineer - Agentic AI",
+      "company": "JPMorganChase",
+      "location": "Mumbai, Maharashtra",
+      "posted_date": "2026-09-28",
+      "url": "https://builtin.com/job/sr-lead-software-engineer/11073174",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 131,
+      "title": "AI Engineer",
+      "company": "LogicMonitor",
+      "location": "Bengaluru, Karnataka",
+      "posted_date": "2026-09-29",
+      "url": "https://builtin.com/job/ai-engineer/11412596",
+      "canonical_source": null,
+      "source_types": null
+    }
+  ]
+}

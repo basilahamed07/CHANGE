@@ -1,0 +1,256 @@
+{
+  "code": "DE",
+  "region": "Germany",
+  "sources_attempted": 20,
+  "raw_jobs": 86,
+  "unique_jobs": 9,
+  "duplicates": 1,
+  "new_jobs_total_pool": 9,
+  "by_status": {
+    "PASS": 6,
+    "NO_RESULTS": 10,
+    "NOT_APPLICABLE": 2,
+    "CONFIGURATION_REQUIRED": 2
+  },
+  "by_source": {
+    "greenhouse": {
+      "found": 70,
+      "ingested": 1,
+      "status": "PASS"
+    },
+    "lever": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "ashby": {
+      "found": 3,
+      "ingested": 2,
+      "status": "PASS"
+    },
+    "smartrecruiters": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "recruitee": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "mycareersfuture": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "arbeitnow": {
+      "found": 1,
+      "ingested": 1,
+      "status": "PASS"
+    },
+    "reed": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "jooble": {
+      "found": 0,
+      "ingested": 0,
+      "status": "CONFIGURATION_REQUIRED"
+    },
+    "adzuna": {
+      "found": 0,
+      "ingested": 0,
+      "status": "CONFIGURATION_REQUIRED"
+    },
+    "wellfound": {
+      "found": 4,
+      "ingested": 1,
+      "status": "PASS"
+    },
+    "remotive": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "jobicy": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "himalayas": {
+      "found": 6,
+      "ingested": 3,
+      "status": "PASS"
+    },
+    "workingnomads": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "landingjobs": {
+      "found": 2,
+      "ingested": 1,
+      "status": "PASS"
+    },
+    "builtin": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "weworkremotely": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "remoteok": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "4dayweek": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    }
+  },
+  "coverage_buckets": {
+    "GLOBAL": 1,
+    "LOCAL": 1,
+    "TECH_STARTUP": 3,
+    "GOVERNMENT": 0,
+    "ATS": 5,
+    "REMOTE": 7,
+    "AGGREGATOR": 1
+  },
+  "coverage_status": "FULL",
+  "duration_s": 130.1,
+  "crashed": null,
+  "generated_at": "2026-09-30T10:42:31Z",
+  "search_terms": [
+    "AI Engineer",
+    "Machine Learning Engineer"
+  ],
+  "sample_jobs": [
+    {
+      "id": 53,
+      "title": "Senior AI Engineer (Forward Deployed)",
+      "company": "Ki Performance",
+      "location": "Munich, DE; Lisbon, PT; Cologne, DE",
+      "posted_date": "2025-11-24",
+      "url": "https://landing.jobs/at/ki-performance/senior-ai-engineer-forward-deployed",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 52,
+      "title": "Product Lead - AI Neobank App",
+      "company": "Bjak",
+      "location": "Germany",
+      "posted_date": "2026-09-30",
+      "url": "https://himalayas.app/companies/bjak/jobs/product-lead-ai-neobank-app-5871865649",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 51,
+      "title": "Mobile Application Developer - AI Neobank App",
+      "company": "Bjak",
+      "location": "Germany",
+      "posted_date": "2026-09-30",
+      "url": "https://himalayas.app/companies/bjak/jobs/mobile-application-developer-ai-neobank-app-4110757730",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 50,
+      "title": "Full Stack Software Engineer - AI Finance Agent",
+      "company": "Bjak",
+      "location": "Germany",
+      "posted_date": "2026-09-30",
+      "url": "https://himalayas.app/companies/bjak/jobs/full-stack-software-engineer-ai-finance-agent-4412489911",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 49,
+      "title": "Machine Learning Engineer",
+      "company": "polyaxon",
+      "location": "Berlin",
+      "posted_date": null,
+      "url": "https://wellfound.com/jobs/846920-machine-learning-engineer",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 48,
+      "title": "AI Engineer (m/w/d) Dealflow",
+      "company": "Flex Capital Management Gmbh",
+      "location": "Berlin",
+      "posted_date": null,
+      "url": "https://www.arbeitnow.com/jobs/companies/flex-capital-management-gmbh/ai-engineer-dealflow-berlin-75769",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 47,
+      "title": "Manager, Applied AI Engineering (Codex)",
+      "company": "Openai",
+      "location": "Munich, Germany",
+      "posted_date": "2026-09-11",
+      "url": "https://jobs.ashbyhq.com/openai/cc203d0d-96cd-4615-b5f1-3f25d6b08a95",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 46,
+      "title": "Applied AI Engineer, Codex",
+      "company": "Openai",
+      "location": "Munich, Germany",
+      "posted_date": "2026-09-23",
+      "url": "https://jobs.ashbyhq.com/openai/6a7cedbd-0a7c-4f3e-8389-55357ad444b3",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 45,
+      "title": "Applied AI Engineer, Startups (Codex)",
+      "company": "Openai",
+      "location": "Munich, Germany",
+      "posted_date": "2026-09-24",
+      "url": "https://jobs.ashbyhq.com/openai/e522c734-6e4e-4d69-80c1-d09d5144eab4",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 44,
+      "title": "Senior Backend Engineer - Databases - Analytics | Germany | Remote",
+      "company": "grafanalabs",
+      "location": "Germany (Remote)",
+      "posted_date": "2026-09-22",
+      "url": "https://job-boards.greenhouse.io/grafanalabs/jobs/6202750004",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 43,
+      "title": "Staff Product Engineer, Agentic Identity & Governance, AI Platform",
+      "company": "Redpanda",
+      "location": "United States; Canada; Poland (Remote)",
+      "posted_date": "2026-09-29",
+      "url": "https://4dayweek.io/job/staff-software-engineer-identity-and-access-ai-platform-at-redpanda-032d9abb",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 42,
+      "title": "Senior Product Engineer, Out-of-Band Policy Engine, AI Platform",
+      "company": "Redpanda",
+      "location": "United States; Canada; Poland (Remote)",
+      "posted_date": "2026-09-30",
+      "url": "https://4dayweek.io/job/senior-product-engineer-out-of-band-policy-engine-ai-platform-at-redpanda-e008a493",
+      "canonical_source": null,
+      "source_types": null
+    }
+  ]
+}

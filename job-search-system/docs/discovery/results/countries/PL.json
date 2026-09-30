@@ -1,0 +1,256 @@
+{
+  "code": "PL",
+  "region": "Poland",
+  "sources_attempted": 20,
+  "raw_jobs": 29,
+  "unique_jobs": 2,
+  "duplicates": 7,
+  "new_jobs_total_pool": 2,
+  "by_status": {
+    "PASS": 4,
+    "NO_RESULTS": 11,
+    "NOT_APPLICABLE": 3,
+    "CONFIGURATION_REQUIRED": 2
+  },
+  "by_source": {
+    "greenhouse": {
+      "found": 24,
+      "ingested": 2,
+      "status": "PASS"
+    },
+    "lever": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "ashby": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "smartrecruiters": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "recruitee": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "mycareersfuture": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "arbeitnow": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "reed": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "jooble": {
+      "found": 0,
+      "ingested": 0,
+      "status": "CONFIGURATION_REQUIRED"
+    },
+    "adzuna": {
+      "found": 0,
+      "ingested": 0,
+      "status": "CONFIGURATION_REQUIRED"
+    },
+    "wellfound": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "remotive": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "jobicy": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "himalayas": {
+      "found": 1,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "workingnomads": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "landingjobs": {
+      "found": 1,
+      "ingested": 0,
+      "status": "PASS"
+    },
+    "builtin": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "weworkremotely": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "remoteok": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
+    },
+    "4dayweek": {
+      "found": 3,
+      "ingested": 0,
+      "status": "PASS"
+    }
+  },
+  "coverage_buckets": {
+    "GLOBAL": 1,
+    "LOCAL": 0,
+    "TECH_STARTUP": 3,
+    "GOVERNMENT": 0,
+    "ATS": 5,
+    "REMOTE": 7,
+    "AGGREGATOR": 1
+  },
+  "coverage_status": "FULL",
+  "duration_s": 125.5,
+  "crashed": null,
+  "generated_at": "2026-09-30T10:42:31Z",
+  "search_terms": [
+    "AI Engineer",
+    "Machine Learning Engineer"
+  ],
+  "sample_jobs": [
+    {
+      "id": 152,
+      "title": "Product Manager - AI Neobank App",
+      "company": "Bjak",
+      "location": "Poland",
+      "posted_date": "2026-09-30",
+      "url": "https://himalayas.app/companies/bjak/jobs/product-manager-ai-neobank-app-6427846949",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 151,
+      "title": "Senior Software Engineer (Typescript), AI Clients: Duo CLI",
+      "company": "gitlab",
+      "location": "Remote, Poland",
+      "posted_date": "2026-09-29",
+      "url": "https://job-boards.greenhouse.io/gitlab/jobs/8749952002",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 150,
+      "title": "Senior Backend Engineer, Trusted Agentic Development",
+      "company": "gitlab",
+      "location": "Remote, Poland",
+      "posted_date": "2026-09-29",
+      "url": "https://job-boards.greenhouse.io/gitlab/jobs/8760233002",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 149,
+      "title": "Senior Backend Engineer (Go), Tenant Scale: Gitaly",
+      "company": "gitlab",
+      "location": "Remote, Poland",
+      "posted_date": "2026-09-29",
+      "url": "https://job-boards.greenhouse.io/gitlab/jobs/8749951002",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 147,
+      "title": "Intermediate-Senior Backend Engineer (Ruby), Plan: Spec-Driven Development",
+      "company": "gitlab",
+      "location": "Remote, Poland",
+      "posted_date": "2026-09-30",
+      "url": "https://job-boards.greenhouse.io/gitlab/jobs/8749950002",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 146,
+      "title": "Engineering Manager, Trusted Agentic Development",
+      "company": "gitlab",
+      "location": "Remote, Poland",
+      "posted_date": "2026-09-29",
+      "url": "https://job-boards.greenhouse.io/gitlab/jobs/8782040002",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 145,
+      "title": "Python Software Engineer -  AI team",
+      "company": "Channable",
+      "location": "Utrecht, Utrecht, Netherlands",
+      "posted_date": "2026-06-02",
+      "url": "https://jobs.channable.com/o/python-software-engineer-ai-team-1",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 144,
+      "title": "Sr. Manager, AI Forward Deployed Engineering",
+      "company": "databricks",
+      "location": "Amsterdam, Netherlands",
+      "posted_date": "2026-09-25",
+      "url": "https://databricks.com/company/careers/open-positions/job?gh_jid=8574912002",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 143,
+      "title": "AI Forward Deployed Engineer - Netherlands",
+      "company": "databricks",
+      "location": "Amsterdam, Netherlands",
+      "posted_date": "2026-09-25",
+      "url": "https://databricks.com/company/careers/open-positions/job?gh_jid=8813464002",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 142,
+      "title": "Principal Engineer- Java Fullstack -Generative AI",
+      "company": "Wells Fargo",
+      "location": "Bengaluru, Karnataka",
+      "posted_date": "2026-09-25",
+      "url": "https://builtin.com/job/principal-engineer-java-fullstack-generative-ai/11367322",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 141,
+      "title": "Lead Software Engineer Java Spring boor Gen AI",
+      "company": "JPMorganChase",
+      "location": "Mumbai, Maharashtra",
+      "posted_date": "2026-09-25",
+      "url": "https://builtin.com/job/lead-software-engineer-java-spring-boor-gen-ai/11369650",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 140,
+      "title": "Senior Software Engineer - Senior AI Engineer",
+      "company": "Wells Fargo",
+      "location": "Hyderabad, Telangana",
+      "posted_date": "2026-09-26",
+      "url": "https://builtin.com/job/senior-software-engineer-senior-ai-engineer/11384874",
+      "canonical_source": null,
+      "source_types": null
+    }
+  ]
+}

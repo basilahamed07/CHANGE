@@ -129,6 +129,8 @@ _COLUMN_ALLOWLISTS = {
         # M7 rich research cache fields
         "careers_url", "linkedin_url", "ai_clues", "research_status",
         "researched_at",
+        # Direct-career discovery cache (Stage-1 upgrade)
+        "careers_ats", "careers_checked_at",
     },
     "jobs": {
         "title", "company", "location", "salary_min", "salary_max",
@@ -697,6 +699,13 @@ class Database:
             # M5: freshness evidence (JSON from freshness.assess_freshness) —
             # audit trail of what was known about the posted date and when.
             "freshness_evidence": "ALTER TABLE jobs ADD COLUMN freshness_evidence TEXT",
+            # Discovery upgrade (Stage-1): provenance + canonical source.
+            # canonical_source = the authoritative origin after dedup
+            # (ATS/direct-career beats board beats aggregator — task §19);
+            # source_types = JSON map source_name → SourceType for provenance
+            # reporting. insert_source rows stay the raw source evidence.
+            "canonical_source": "ALTER TABLE jobs ADD COLUMN canonical_source TEXT",
+            "source_types": "ALTER TABLE jobs ADD COLUMN source_types TEXT",
         }
         for col, sql in jobs_migrations.items():
             if col not in jobs_columns:
@@ -714,6 +723,16 @@ class Database:
         }
         if comp_columns:
             for col, sql in comp_migrations.items():
+                if col not in comp_columns:
+                    await self.db.execute(sql)
+            # Direct-career discovery cache (task §25/§31): which ATS hosts a
+            # company's careers page, and when it was last checked — so the
+            # same company is not re-probed every run.
+            comp_career_migrations = {
+                "careers_ats": "ALTER TABLE companies ADD COLUMN careers_ats TEXT",
+                "careers_checked_at": "ALTER TABLE companies ADD COLUMN careers_checked_at TEXT",
+            }
+            for col, sql in comp_career_migrations.items():
                 if col not in comp_columns:
                     await self.db.execute(sql)
 
@@ -1022,6 +1041,24 @@ class Database:
         cursor = await self.db.execute("SELECT * FROM sources WHERE job_id = ?", (job_id,))
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
+
+    async def set_canonical_source(self, job_id: int, canonical_source: str,
+                                   source_types: dict | None = None) -> None:
+        """Record the authoritative origin after dedup (task §19).
+
+        canonical_source: highest-priority source that has seen this job
+        (direct career > employer ATS > government > board > aggregator).
+        source_types: JSON map {source_name: SourceType} — provenance detail
+        for reports without JOINs. Called by the discovery orchestrator.
+        """
+        import json as _json
+        await self.db.execute(
+            "UPDATE jobs SET canonical_source = ?, source_types = ? WHERE id = ?",
+            (canonical_source,
+             _json.dumps(source_types) if source_types else None,
+             job_id),
+        )
+        await self.db.commit()
 
     async def get_jobs_needing_enrichment(self, limit: int = 50) -> list[dict]:
         cursor = await self.db.execute(

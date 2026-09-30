@@ -30,6 +30,7 @@ from app.scrapers.recruitee import RecruiteeScraper
 from app.scrapers.mycareersfuture import MyCareersFutureScraper
 from app.scrapers.wellfound import WellfoundScraper
 from app.scrapers.workingnomads import WorkingNomadsScraper
+from app.scrapers.builtin import BuiltInScraper
 
 
 class ArbeitnowAdapter(CountryScopedAdapter):
@@ -86,6 +87,15 @@ class RecruiteeAdapter(CountryScopedAdapter):
     strength); company list overridable via 'recruitee_companies' key."""
     source_name = "recruitee"
     scraper_cls = RecruiteeScraper
+
+
+class BuiltinAdapter(CountryScopedAdapter):
+    """Built In tech-city boards (US + Canada: Toronto/Vancouver/Calgary —
+    real CA coverage the country sweep exposed as missing). Scraper existed
+    since M1 but was NEVER wired into discovery (found by the Stage-1 audit).
+    keyless; multi-city listing locations."""
+    source_name = "builtin"
+    scraper_cls = BuiltInScraper
 
 
 class MyCareersFutureAdapter(CountryScopedAdapter):

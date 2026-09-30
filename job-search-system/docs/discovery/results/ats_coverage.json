@@ -1,0 +1,122 @@
+{
+  "generated_at": "2026-09-30T10:42:31Z",
+  "rules": [
+    {
+      "host_pattern": "job-boards.greenhouse.io",
+      "ats": "greenhouse",
+      "adapter_hint": "greenhouse"
+    },
+    {
+      "host_pattern": "jobs.smartrecruiters.com",
+      "ats": "smartrecruiters",
+      "adapter_hint": "smartrecruiters"
+    },
+    {
+      "host_pattern": "careers.pageuppeople.com",
+      "ats": "pageup",
+      "adapter_hint": null
+    },
+    {
+      "host_pattern": "boards.greenhouse.io",
+      "ats": "greenhouse",
+      "adapter_hint": "greenhouse"
+    },
+    {
+      "host_pattern": ".successfactors.com",
+      "ats": "sap_successfactors",
+      "adapter_hint": null
+    },
+    {
+      "host_pattern": ".myworkdayjobs.com",
+      "ats": "workday",
+      "adapter_hint": null
+    },
+    {
+      "host_pattern": ".myworkdaysite.com",
+      "ats": "workday",
+      "adapter_hint": null
+    },
+    {
+      "host_pattern": "apply.workable.com",
+      "ats": "workable",
+      "adapter_hint": null
+    },
+    {
+      "host_pattern": "jobs.eu.lever.co",
+      "ats": "lever",
+      "adapter_hint": "lever"
+    },
+    {
+      "host_pattern": "jobs.ashbyhq.com",
+      "ats": "ashby",
+      "adapter_hint": "ashby"
+    },
+    {
+      "host_pattern": "jobs.jobvite.com",
+      "ats": "jobvite",
+      "adapter_hint": null
+    },
+    {
+      "host_pattern": ".teamtailor.com",
+      "ats": "teamtailor",
+      "adapter_hint": null
+    },
+    {
+      "host_pattern": "jobs.comeet.com",
+      "ats": "comeet",
+      "adapter_hint": null
+    },
+    {
+      "host_pattern": ".recruitee.com",
+      "ats": "recruitee",
+      "adapter_hint": "recruitee"
+    },
+    {
+      "host_pattern": "jobs.taleo.net",
+      "ats": "taleo",
+      "adapter_hint": null
+    },
+    {
+      "host_pattern": "jobs.gusto.com",
+      "ats": "gusto",
+      "adapter_hint": null
+    },
+    {
+      "host_pattern": "jobs.lever.co",
+      "ats": "lever",
+      "adapter_hint": "lever"
+    },
+    {
+      "host_pattern": ".bamboohr.com",
+      "ats": "bamboohr",
+      "adapter_hint": null
+    },
+    {
+      "host_pattern": ".icims.com",
+      "ats": "icims",
+      "adapter_hint": null
+    }
+  ],
+  "adapters": [
+    "greenhouse",
+    "lever",
+    "ashby",
+    "smartrecruiters",
+    "jooble",
+    "adzuna",
+    "reed",
+    "arbeitnow",
+    "remotive",
+    "jobicy",
+    "weworkremotely",
+    "remoteok",
+    "himalayas",
+    "4dayweek",
+    "landingjobs",
+    "recruitee",
+    "mycareersfuture",
+    "wellfound",
+    "workingnomads",
+    "builtin"
+  ]
+}

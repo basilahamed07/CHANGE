@@ -44,7 +44,7 @@ class BuiltInScraper(BaseScraper):
 
     def _parse_listing_jsonld(self, html: str) -> list[dict]:
         """Extract job stubs from JSON-LD ItemList on listing pages."""
-        soup = BeautifulSoup(html, "html.parser")
+        soup = BeautifulSoup(self._normalize_ld_type(html), "html.parser")
         items = []
 
         for script in soup.find_all("script", type="application/ld+json"):
@@ -65,9 +65,20 @@ class BuiltInScraper(BaseScraper):
                             })
         return items
 
+    @staticmethod
+    def _normalize_ld_type(html: str) -> str:
+        """Unescape HTML-entity-encoded MIME types in script tags.
+
+        Live-found 2026-09-30: builtin.com emits
+        <script type="application/ld&#x2B;json"> — the HTML-escaped '+' makes
+        BeautifulSoup's type filter match NOTHING, so every pass parsed 0 stubs
+        and the adapter returned NO_RESULTS against a fully live board.
+        """
+        return re.sub(r"(&#x2[bB];|&#43;)", "+", html or "")
+
     def _parse_detail_jsonld(self, html: str) -> dict | None:
         """Extract full job data from JobPosting JSON-LD on detail pages."""
-        soup = BeautifulSoup(html, "html.parser")
+        soup = BeautifulSoup(self._normalize_ld_type(html), "html.parser")
 
         for script in soup.find_all("script", type="application/ld+json"):
             try:
@@ -77,6 +88,11 @@ class BuiltInScraper(BaseScraper):
 
             if data.get("@type") == "JobPosting":
                 return data
+            # builtin.com wraps the JobPosting inside an @graph block
+            # (live-verified 2026-09-30): ['JobPosting'] sits in data['@graph'].
+            for node in data.get("@graph", []) or []:
+                if isinstance(node, dict) and node.get("@type") == "JobPosting":
+                    return node
 
         return None
 

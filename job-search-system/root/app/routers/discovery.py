@@ -38,6 +38,32 @@ async def list_adapters(request: Request):
     return {"adapters": [a.source_name for a in ALL_ADAPTERS]}
 
 
+@router.get("/discovery/registry")
+async def source_registry_view(request: Request):
+    """Central source registry (Stage-1 upgrade): every source's type, tier,
+    country relevance, access mode + per-country coverage buckets.
+
+    Read-only report data for UI/analytics — the DISCOVER engine reads the
+    same registry directly (app/source_registry.py).
+    """
+    from app import source_registry as sr
+    registry = getattr(request.app.state, "country_registry", None)
+    countries = {}
+    if registry:
+        for c in registry.countries.values():
+            countries[c.code] = {
+                "region": c.region, "enabled": c.enabled,
+                "coverage_buckets": sr.coverage_summary(c.code),
+                "coverage_status": sr.coverage_status(c.code),
+            }
+    return {
+        "sources": sr.to_dict(),
+        "run_order": sr.adapter_order(),
+        "category_counts_global": sr.category_counts(),
+        "countries": countries,
+    }
+
+
 @router.get("/discovery/health")
 async def discovery_health(request: Request):
     """Per-source reachability probe (cheap, parallel)."""

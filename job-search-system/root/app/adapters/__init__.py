@@ -32,6 +32,7 @@ from app.adapters.country_scoped import (
     MyCareersFutureAdapter,
     WellfoundAdapter,
     WorkingNomadsAdapter,
+    BuiltinAdapter,
 )
 
 ALL_ADAPTERS = [
@@ -54,4 +55,5 @@ ALL_ADAPTERS = [
     MyCareersFutureAdapter,
     WellfoundAdapter,
     WorkingNomadsAdapter,
+    BuiltinAdapter,
 ]

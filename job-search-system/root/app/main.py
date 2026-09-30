@@ -237,6 +237,16 @@ async def lifespan(app: FastAPI):
             logger.exception("Country registry init failed — continuing without strategy")
             app.state.country_registry = None
 
+        # Stage-1 discovery upgrade: registry ↔ adapters must agree at startup
+        # (strict — a registered source with no adapter is silent source loss).
+        try:
+            from app import source_registry as _sr
+            from app.adapters import ALL_ADAPTERS as _all_adapters
+            _sr.validate_against({cls.source_name for cls in _all_adapters},
+                                 strict=True)
+        except Exception:
+            logger.exception("Source registry validation failed — fix the mismatch")
+
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
         scheduler = AsyncIOScheduler()

@@ -1,0 +1,1305 @@
+{
+  "generated_at": "2026-09-30T10:42:31Z",
+  "countries": [
+    {
+      "code": "AE",
+      "region": "UAE",
+      "sources_attempted": 20,
+      "raw_jobs": 4,
+      "unique_jobs": 2,
+      "duplicates": 0,
+      "new_jobs_total_pool": 2,
+      "by_status": {
+        "PASS": 3,
+        "NO_RESULTS": 12,
+        "NOT_APPLICABLE": 3,
+        "CONFIGURATION_REQUIRED": 2
+      },
+      "by_source": {
+        "greenhouse": {
+          "found": 2,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "lever": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "ashby": {
+          "found": 1,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "smartrecruiters": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "recruitee": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "mycareersfuture": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "arbeitnow": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "reed": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "jooble": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "adzuna": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "wellfound": {
+          "found": 1,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "remotive": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "jobicy": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "himalayas": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "workingnomads": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "landingjobs": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "builtin": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "weworkremotely": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "remoteok": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "4dayweek": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        }
+      },
+      "coverage_buckets": {
+        "GLOBAL": 1,
+        "LOCAL": 0,
+        "TECH_STARTUP": 3,
+        "GOVERNMENT": 0,
+        "ATS": 5,
+        "REMOTE": 7,
+        "AGGREGATOR": 1
+      },
+      "coverage_status": "FULL",
+      "duration_s": 126.1,
+      "crashed": null
+    },
+    {
+      "code": "AU",
+      "region": "Australia",
+      "sources_attempted": 20,
+      "raw_jobs": 57,
+      "unique_jobs": 4,
+      "duplicates": 1,
+      "new_jobs_total_pool": 4,
+      "by_status": {
+        "PASS": 5,
+        "NO_RESULTS": 10,
+        "NOT_APPLICABLE": 3,
+        "CONFIGURATION_REQUIRED": 2
+      },
+      "by_source": {
+        "greenhouse": {
+          "found": 49,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "lever": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "ashby": {
+          "found": 1,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "smartrecruiters": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "recruitee": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "mycareersfuture": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "arbeitnow": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "reed": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "jooble": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "adzuna": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "wellfound": {
+          "found": 5,
+          "ingested": 2,
+          "status": "PASS"
+        },
+        "remotive": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "jobicy": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "himalayas": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "workingnomads": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "landingjobs": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "builtin": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "weworkremotely": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "remoteok": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "4dayweek": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        }
+      },
+      "coverage_buckets": {
+        "GLOBAL": 1,
+        "LOCAL": 0,
+        "TECH_STARTUP": 3,
+        "GOVERNMENT": 0,
+        "ATS": 5,
+        "REMOTE": 7,
+        "AGGREGATOR": 1
+      },
+      "coverage_status": "FULL",
+      "duration_s": 139.7,
+      "crashed": null
+    },
+    {
+      "code": "CA",
+      "region": "Canada",
+      "sources_attempted": 20,
+      "raw_jobs": 179,
+      "unique_jobs": 29,
+      "duplicates": 8,
+      "new_jobs_total_pool": 29,
+      "by_status": {
+        "PASS": 7,
+        "NO_RESULTS": 8,
+        "NOT_APPLICABLE": 3,
+        "CONFIGURATION_REQUIRED": 2
+      },
+      "by_source": {
+        "greenhouse": {
+          "found": 153,
+          "ingested": 25,
+          "status": "PASS"
+        },
+        "lever": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "ashby": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "smartrecruiters": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "recruitee": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "mycareersfuture": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "arbeitnow": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "reed": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "jooble": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "adzuna": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "wellfound": {
+          "found": 8,
+          "ingested": 2,
+          "status": "PASS"
+        },
+        "remotive": {
+          "found": 2,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "jobicy": {
+          "found": 6,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "himalayas": {
+          "found": 2,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "workingnomads": {
+          "found": 6,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "landingjobs": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "builtin": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "weworkremotely": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "remoteok": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "4dayweek": {
+          "found": 2,
+          "ingested": 2,
+          "status": "PASS"
+        }
+      },
+      "coverage_buckets": {
+        "GLOBAL": 1,
+        "LOCAL": 0,
+        "TECH_STARTUP": 3,
+        "GOVERNMENT": 0,
+        "ATS": 5,
+        "REMOTE": 7,
+        "AGGREGATOR": 1
+      },
+      "coverage_status": "FULL",
+      "duration_s": 161.6,
+      "crashed": null
+    },
+    {
+      "code": "DE",
+      "region": "Germany",
+      "sources_attempted": 20,
+      "raw_jobs": 86,
+      "unique_jobs": 9,
+      "duplicates": 1,
+      "new_jobs_total_pool": 9,
+      "by_status": {
+        "PASS": 6,
+        "NO_RESULTS": 10,
+        "NOT_APPLICABLE": 2,
+        "CONFIGURATION_REQUIRED": 2
+      },
+      "by_source": {
+        "greenhouse": {
+          "found": 70,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "lever": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "ashby": {
+          "found": 3,
+          "ingested": 2,
+          "status": "PASS"
+        },
+        "smartrecruiters": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "recruitee": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "mycareersfuture": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "arbeitnow": {
+          "found": 1,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "reed": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "jooble": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "adzuna": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "wellfound": {
+          "found": 4,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "remotive": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "jobicy": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "himalayas": {
+          "found": 6,
+          "ingested": 3,
+          "status": "PASS"
+        },
+        "workingnomads": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "landingjobs": {
+          "found": 2,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "builtin": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "weworkremotely": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "remoteok": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "4dayweek": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        }
+      },
+      "coverage_buckets": {
+        "GLOBAL": 1,
+        "LOCAL": 1,
+        "TECH_STARTUP": 3,
+        "GOVERNMENT": 0,
+        "ATS": 5,
+        "REMOTE": 7,
+        "AGGREGATOR": 1
+      },
+      "coverage_status": "FULL",
+      "duration_s": 130.1,
+      "crashed": null
+    },
+    {
+      "code": "GB",
+      "region": "UK",
+      "sources_attempted": 20,
+      "raw_jobs": 199,
+      "unique_jobs": 24,
+      "duplicates": 18,
+      "new_jobs_total_pool": 24,
+      "by_status": {
+        "PASS": 8,
+        "NO_RESULTS": 7,
+        "NOT_APPLICABLE": 2,
+        "CONFIGURATION_REQUIRED": 3
+      },
+      "by_source": {
+        "greenhouse": {
+          "found": 179,
+          "ingested": 16,
+          "status": "PASS"
+        },
+        "lever": {
+          "found": 1,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "ashby": {
+          "found": 5,
+          "ingested": 2,
+          "status": "PASS"
+        },
+        "smartrecruiters": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "recruitee": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "mycareersfuture": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "arbeitnow": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "reed": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "jooble": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "adzuna": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "wellfound": {
+          "found": 4,
+          "ingested": 2,
+          "status": "PASS"
+        },
+        "remotive": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "jobicy": {
+          "found": 3,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "himalayas": {
+          "found": 4,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "workingnomads": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "landingjobs": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "builtin": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "weworkremotely": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "remoteok": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "4dayweek": {
+          "found": 2,
+          "ingested": 2,
+          "status": "PASS"
+        }
+      },
+      "coverage_buckets": {
+        "GLOBAL": 1,
+        "LOCAL": 1,
+        "TECH_STARTUP": 3,
+        "GOVERNMENT": 0,
+        "ATS": 5,
+        "REMOTE": 7,
+        "AGGREGATOR": 1
+      },
+      "coverage_status": "FULL",
+      "duration_s": 135.3,
+      "crashed": null
+    },
+    {
+      "code": "IE",
+      "region": "Ireland",
+      "sources_attempted": 20,
+      "raw_jobs": 72,
+      "unique_jobs": 2,
+      "duplicates": 4,
+      "new_jobs_total_pool": 2,
+      "by_status": {
+        "PASS": 5,
+        "NO_RESULTS": 10,
+        "NOT_APPLICABLE": 3,
+        "CONFIGURATION_REQUIRED": 2
+      },
+      "by_source": {
+        "greenhouse": {
+          "found": 68,
+          "ingested": 2,
+          "status": "PASS"
+        },
+        "lever": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "ashby": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "smartrecruiters": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "recruitee": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "mycareersfuture": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "arbeitnow": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "reed": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "jooble": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "adzuna": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "wellfound": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "remotive": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "jobicy": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "himalayas": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "workingnomads": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "landingjobs": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "builtin": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "weworkremotely": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "remoteok": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "4dayweek": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        }
+      },
+      "coverage_buckets": {
+        "GLOBAL": 1,
+        "LOCAL": 0,
+        "TECH_STARTUP": 3,
+        "GOVERNMENT": 0,
+        "ATS": 5,
+        "REMOTE": 7,
+        "AGGREGATOR": 1
+      },
+      "coverage_status": "FULL",
+      "duration_s": 145.6,
+      "crashed": null
+    },
+    {
+      "code": "IN",
+      "region": "India",
+      "sources_attempted": 20,
+      "raw_jobs": 217,
+      "unique_jobs": 38,
+      "duplicates": 12,
+      "new_jobs_total_pool": 38,
+      "by_status": {
+        "PASS": 5,
+        "NO_RESULTS": 10,
+        "NOT_APPLICABLE": 3,
+        "CONFIGURATION_REQUIRED": 2
+      },
+      "by_source": {
+        "greenhouse": {
+          "found": 181,
+          "ingested": 15,
+          "status": "PASS"
+        },
+        "lever": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "ashby": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "smartrecruiters": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "recruitee": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "mycareersfuture": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "arbeitnow": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "reed": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "jooble": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "adzuna": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "wellfound": {
+          "found": 12,
+          "ingested": 3,
+          "status": "PASS"
+        },
+        "remotive": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "jobicy": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "himalayas": {
+          "found": 2,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "workingnomads": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "landingjobs": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "builtin": {
+          "found": 21,
+          "ingested": 20,
+          "status": "PASS"
+        },
+        "weworkremotely": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "remoteok": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "4dayweek": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        }
+      },
+      "coverage_buckets": {
+        "GLOBAL": 1,
+        "LOCAL": 0,
+        "TECH_STARTUP": 3,
+        "GOVERNMENT": 0,
+        "ATS": 5,
+        "REMOTE": 7,
+        "AGGREGATOR": 1
+      },
+      "coverage_status": "FULL",
+      "duration_s": 128.7,
+      "crashed": null
+    },
+    {
+      "code": "NL",
+      "region": "Netherlands",
+      "sources_attempted": 20,
+      "raw_jobs": 58,
+      "unique_jobs": 2,
+      "duplicates": 1,
+      "new_jobs_total_pool": 2,
+      "by_status": {
+        "PASS": 3,
+        "NO_RESULTS": 12,
+        "NOT_APPLICABLE": 3,
+        "CONFIGURATION_REQUIRED": 2
+      },
+      "by_source": {
+        "greenhouse": {
+          "found": 54,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "lever": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "ashby": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "smartrecruiters": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "recruitee": {
+          "found": 3,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "mycareersfuture": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "arbeitnow": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "reed": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "jooble": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "adzuna": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "wellfound": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "remotive": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "jobicy": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "himalayas": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "workingnomads": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "landingjobs": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "builtin": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "weworkremotely": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "remoteok": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "4dayweek": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        }
+      },
+      "coverage_buckets": {
+        "GLOBAL": 1,
+        "LOCAL": 0,
+        "TECH_STARTUP": 3,
+        "GOVERNMENT": 0,
+        "ATS": 5,
+        "REMOTE": 7,
+        "AGGREGATOR": 1
+      },
+      "coverage_status": "FULL",
+      "duration_s": 150.0,
+      "crashed": null
+    },
+    {
+      "code": "PL",
+      "region": "Poland",
+      "sources_attempted": 20,
+      "raw_jobs": 29,
+      "unique_jobs": 2,
+      "duplicates": 7,
+      "new_jobs_total_pool": 2,
+      "by_status": {
+        "PASS": 4,
+        "NO_RESULTS": 11,
+        "NOT_APPLICABLE": 3,
+        "CONFIGURATION_REQUIRED": 2
+      },
+      "by_source": {
+        "greenhouse": {
+          "found": 24,
+          "ingested": 2,
+          "status": "PASS"
+        },
+        "lever": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "ashby": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "smartrecruiters": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "recruitee": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "mycareersfuture": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "arbeitnow": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "reed": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "jooble": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "adzuna": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "wellfound": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "remotive": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "jobicy": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "himalayas": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "workingnomads": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "landingjobs": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "builtin": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "weworkremotely": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "remoteok": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "4dayweek": {
+          "found": 3,
+          "ingested": 0,
+          "status": "PASS"
+        }
+      },
+      "coverage_buckets": {
+        "GLOBAL": 1,
+        "LOCAL": 0,
+        "TECH_STARTUP": 3,
+        "GOVERNMENT": 0,
+        "ATS": 5,
+        "REMOTE": 7,
+        "AGGREGATOR": 1
+      },
+      "coverage_status": "FULL",
+      "duration_s": 125.5,
+      "crashed": null
+    },
+    {
+      "code": "SG",
+      "region": "Singapore",
+      "sources_attempted": 20,
+      "raw_jobs": 157,
+      "unique_jobs": 82,
+      "duplicates": 21,
+      "new_jobs_total_pool": 82,
+      "by_status": {
+        "PASS": 7,
+        "NO_RESULTS": 9,
+        "NOT_APPLICABLE": 2,
+        "CONFIGURATION_REQUIRED": 2
+      },
+      "by_source": {
+        "greenhouse": {
+          "found": 50,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "lever": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "ashby": {
+          "found": 2,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "smartrecruiters": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "recruitee": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "mycareersfuture": {
+          "found": 100,
+          "ingested": 81,
+          "status": "PASS"
+        },
+        "arbeitnow": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "reed": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NOT_APPLICABLE"
+        },
+        "jooble": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "adzuna": {
+          "found": 0,
+          "ingested": 0,
+          "status": "CONFIGURATION_REQUIRED"
+        },
+        "wellfound": {
+          "found": 2,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "remotive": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "jobicy": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "himalayas": {
+          "found": 1,
+          "ingested": 1,
+          "status": "PASS"
+        },
+        "workingnomads": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "landingjobs": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "builtin": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "weworkremotely": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        },
+        "remoteok": {
+          "found": 1,
+          "ingested": 0,
+          "status": "PASS"
+        },
+        "4dayweek": {
+          "found": 0,
+          "ingested": 0,
+          "status": "NO_RESULTS"
+        }
+      },
+      "coverage_buckets": {
+        "GLOBAL": 1,
+        "LOCAL": 0,
+        "TECH_STARTUP": 3,
+        "GOVERNMENT": 1,
+        "ATS": 5,
+        "REMOTE": 7,
+        "AGGREGATOR": 1
+      },
+      "coverage_status": "FULL",
+      "duration_s": 147.6,
+      "crashed": null
+    }
+  ],
+  "category_counts_global": {
+    "AGGREGATOR": 1,
+    "ATS": 5,
+    "GLOBAL_BOARD": 1,
+    "GOVERNMENT": 1,
+    "LOCAL_BOARD": 2,
+    "REMOTE_BOARD": 7,
+    "STARTUP_BOARD": 1,
+    "TECH_BOARD": 2
+  }
+}
