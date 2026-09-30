@@ -7,6 +7,7 @@ no live network (live coverage is the separate analysis/ sweep + reports).
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -495,3 +496,141 @@ async def test_canonical_source_column_persists(tmp_path):
     assert cs == "greenhouse"
     assert json.loads(st)["jooble"] == "AGGREGATOR"
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Bounded concurrency (performance task): parallel searches, serial ingest,
+# isolation, config surface — same discovery results as serial.
+# ---------------------------------------------------------------------------
+
+
+class _SlowSrc(_StubAdapter):
+    """Simulates a slow source (sleep) so concurrency is observable."""
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+
+    async def search(self, role_terms, country=None):
+        from app.job_adapter import AdapterResult
+        await asyncio.sleep(0.2)
+        return await super().search(role_terms, country)
+
+
+@pytest.mark.asyncio
+async def test_concurrency_respects_semaphore(tmp_path):
+    """5 slow sources with max_concurrent_sources=2 must overlap at most 2."""
+    import asyncio
+    from app.database import Database
+    from app.discovery import run_discovery_cycle
+    from app.country_registry import CountryRegistry
+
+    active = {"n": 0, "max": 0}
+
+    class Tracked(_SlowSrc):
+        source_name = "tracked"
+
+        async def search(self, role_terms, country=None):
+            active["n"] += 1
+            active["max"] = max(active["max"], active["n"])
+            try:
+                return await super().search(role_terms, country)
+            finally:
+                active["n"] -= 1
+
+    db = Database(str(tmp_path / "t.db"))
+    await db.init()
+    registry = CountryRegistry("config/countries").load()
+    await db.update_allowed_regions(registry.enabled_region_names() + ["Remote"])
+
+    class _Reg:
+        def enabled_countries(self):
+            return [registry.get("Germany")]
+
+    await run_discovery_cycle(db, _Reg(), [Tracked, Tracked, Tracked, Tracked, Tracked],
+                              max_passes=5, scraper_keys={}, max_concurrent_sources=2)
+    assert active["max"] <= 2, f"semaphore violated: {active['max']} concurrent"
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_concurrency_isolation_one_crash_does_not_kill_siblings(tmp_path):
+    """A crashing source must not cancel the others (task rule 8)."""
+    from app.database import Database
+    from app.discovery import run_discovery_cycle
+    from app.country_registry import CountryRegistry
+    from app.job_adapter import AdapterResult
+
+    class Boom(_StubAdapter):
+        source_name = "boom"
+
+        async def search(self, role_terms, country=None):
+            raise RuntimeError("simulated crash")
+
+    class Fine(_SlowSrc):
+        source_name = "fine"
+
+    db = Database(str(tmp_path / "t.db"))
+    await db.init()
+    registry = CountryRegistry("config/countries").load()
+    await db.update_allowed_regions(registry.enabled_region_names() + ["Remote"])
+
+    class _Reg:
+        def enabled_countries(self):
+            return [registry.get("Germany")]
+
+    telemetry = await run_discovery_cycle(
+        db, _Reg(), [Boom, Fine], max_passes=2, scraper_keys={})
+    by_src = {p["source"]: p for p in telemetry["passes"]}
+    assert by_src["boom"]["stop_reason"] == "SOURCE_FAILURE"
+    assert by_src["fine"]["ingested"] == 1, "sibling must still ingest"
+    assert by_src["fine"]["health_status"] == sr.HEALTH_PASS
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_concurrency_same_results_as_serial(tmp_path):
+    """Concurrency must NOT change discovery results (task rule 17): same
+    sources, one job each, run parallel vs serial → identical pool counts."""
+    from app.database import Database
+    from app.discovery import run_discovery_cycle
+    from app.country_registry import CountryRegistry
+
+    registry = CountryRegistry("config/countries").load()
+
+    class _Reg:
+        def enabled_countries(self):
+            return [registry.get("Germany")]
+
+    async def run(conc, db_path):
+        db = Database(db_path)
+        await db.init()
+        await db.update_allowed_regions(
+            registry.enabled_region_names() + ["Remote"])
+        tel = await run_discovery_cycle(
+            db, _Reg(), [_StubAdapter, _StubAdapter, _StubAdapter, _StubAdapter],
+            max_passes=4, scraper_keys={}, max_concurrent_sources=conc)
+        row = await db.db.execute(
+            "SELECT COUNT(*) FROM jobs WHERE company='ProvCo'")
+        n = (await row.fetchone())[0]
+        await db.close()
+        return tel, n
+
+    tel_par, n_par = await run(4, str(tmp_path / "par.db"))
+    tel_ser, n_ser = await run(1, str(tmp_path / "ser.db"))
+    assert n_par == n_ser == 1, "same dedup result regardless of concurrency"
+    assert tel_par["new_jobs"] == tel_ser["new_jobs"]
+    assert tel_par["concurrency"]["max_active_observed"] <= 4
+    assert tel_ser["concurrency"]["max_active_observed"] <= 1
+
+
+def test_concurrency_configurable_from_env(monkeypatch):
+    """JOBAGENT_DISCOVERY_CONCURRENCY overrides the default of 5 (task rule 5)."""
+    from app import discovery as disc
+    monkeypatch.delenv("JOBAGENT_DISCOVERY_CONCURRENCY", raising=False)
+    assert disc._env_concurrency() == 5
+    monkeypatch.setenv("JOBAGENT_DISCOVERY_CONCURRENCY", "3")
+    assert disc._env_concurrency() == 3
+    monkeypatch.setenv("JOBAGENT_DISCOVERY_CONCURRENCY", "garbage")
+    assert disc._env_concurrency() == 5  # falls back safely
+    monkeypatch.setenv("JOBAGENT_DISCOVERY_CONCURRENCY", "1")
+    assert disc._env_concurrency() == 1  # 1 = old serial behavior

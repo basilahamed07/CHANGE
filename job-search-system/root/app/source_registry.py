@@ -336,6 +336,13 @@ def log_source_start(country: str, source: str) -> None:
     logger.info("[DISCOVERY][%s][%s] START", (country or "?").upper(), source)
 
 
+def log_source_done(country: str, source: str, wall_ms: int, status: str) -> None:
+    """Per-source DONE line (concurrency task §13): duration is THIS source's
+    own wall time, not the country's."""
+    logger.info("[DISCOVERY][%s][%s] DONE duration=%.1fs %s",
+                (country or "?").upper(), source, wall_ms / 1000, status)
+
+
 def log_source_end(h: SourceRunHealth) -> None:
     logger.info("[DISCOVERY][%s][%s] raw=%d parsed=%d unique=%d duration=%.1fs %s",
                 h.country, h.source, h.raw_jobs, h.parsed_jobs, h.valid_jobs,

@@ -2,17 +2,32 @@
   "code": "PL",
   "region": "Poland",
   "sources_attempted": 20,
-  "raw_jobs": 29,
-  "unique_jobs": 2,
-  "duplicates": 7,
-  "new_jobs_total_pool": 2,
+  "raw_jobs": 31,
+  "unique_jobs": 3,
+  "duplicates": 6,
+  "new_jobs_total_pool": 3,
   "by_status": {
+    "NOT_APPLICABLE": 3,
     "PASS": 4,
     "NO_RESULTS": 11,
-    "NOT_APPLICABLE": 3,
     "CONFIGURATION_REQUIRED": 2
   },
   "by_source": {
+    "mycareersfuture": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "arbeitnow": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "reed": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
     "greenhouse": {
       "found": 24,
       "ingested": 2,
@@ -37,21 +52,6 @@
       "found": 0,
       "ingested": 0,
       "status": "NO_RESULTS"
-    },
-    "mycareersfuture": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
-    "arbeitnow": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
-    "reed": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
     },
     "jooble": {
       "found": 0,
@@ -79,8 +79,8 @@
       "status": "NO_RESULTS"
     },
     "himalayas": {
-      "found": 1,
-      "ingested": 0,
+      "found": 3,
+      "ingested": 1,
       "status": "PASS"
     },
     "workingnomads": {
@@ -124,26 +124,26 @@
     "AGGREGATOR": 1
   },
   "coverage_status": "FULL",
-  "duration_s": 125.5,
+  "duration_s": 58.6,
   "crashed": null,
-  "generated_at": "2026-09-30T10:42:31Z",
+  "generated_at": "2026-09-30T12:16:19Z",
   "search_terms": [
     "AI Engineer",
     "Machine Learning Engineer"
   ],
   "sample_jobs": [
     {
-      "id": 152,
-      "title": "Product Manager - AI Neobank App",
+      "id": 151,
+      "title": "Applied AI Engineer - AI Finance Agent",
       "company": "Bjak",
       "location": "Poland",
       "posted_date": "2026-09-30",
-      "url": "https://himalayas.app/companies/bjak/jobs/product-manager-ai-neobank-app-6427846949",
+      "url": "https://himalayas.app/companies/bjak/jobs/applied-ai-engineer-ai-finance-agent-4246511322",
       "canonical_source": null,
       "source_types": null
     },
     {
-      "id": 151,
+      "id": 150,
       "title": "Senior Software Engineer (Typescript), AI Clients: Duo CLI",
       "company": "gitlab",
       "location": "Remote, Poland",
@@ -153,7 +153,7 @@
       "source_types": null
     },
     {
-      "id": 150,
+      "id": 149,
       "title": "Senior Backend Engineer, Trusted Agentic Development",
       "company": "gitlab",
       "location": "Remote, Poland",
@@ -163,7 +163,7 @@
       "source_types": null
     },
     {
-      "id": 149,
+      "id": 148,
       "title": "Senior Backend Engineer (Go), Tenant Scale: Gitaly",
       "company": "gitlab",
       "location": "Remote, Poland",
@@ -173,7 +173,7 @@
       "source_types": null
     },
     {
-      "id": 147,
+      "id": 146,
       "title": "Intermediate-Senior Backend Engineer (Ruby), Plan: Spec-Driven Development",
       "company": "gitlab",
       "location": "Remote, Poland",
@@ -183,7 +183,7 @@
       "source_types": null
     },
     {
-      "id": 146,
+      "id": 145,
       "title": "Engineering Manager, Trusted Agentic Development",
       "company": "gitlab",
       "location": "Remote, Poland",
@@ -193,7 +193,7 @@
       "source_types": null
     },
     {
-      "id": 145,
+      "id": 144,
       "title": "Python Software Engineer -  AI team",
       "company": "Channable",
       "location": "Utrecht, Utrecht, Netherlands",
@@ -203,7 +203,7 @@
       "source_types": null
     },
     {
-      "id": 144,
+      "id": 143,
       "title": "Sr. Manager, AI Forward Deployed Engineering",
       "company": "databricks",
       "location": "Amsterdam, Netherlands",
@@ -213,7 +213,7 @@
       "source_types": null
     },
     {
-      "id": 143,
+      "id": 142,
       "title": "AI Forward Deployed Engineer - Netherlands",
       "company": "databricks",
       "location": "Amsterdam, Netherlands",
@@ -223,7 +223,7 @@
       "source_types": null
     },
     {
-      "id": 142,
+      "id": 141,
       "title": "Principal Engineer- Java Fullstack -Generative AI",
       "company": "Wells Fargo",
       "location": "Bengaluru, Karnataka",
@@ -233,7 +233,7 @@
       "source_types": null
     },
     {
-      "id": 141,
+      "id": 140,
       "title": "Lead Software Engineer Java Spring boor Gen AI",
       "company": "JPMorganChase",
       "location": "Mumbai, Maharashtra",
@@ -243,7 +243,7 @@
       "source_types": null
     },
     {
-      "id": 140,
+      "id": 139,
       "title": "Senior Software Engineer - Senior AI Engineer",
       "company": "Wells Fargo",
       "location": "Hyderabad, Telangana",

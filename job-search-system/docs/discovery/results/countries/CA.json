@@ -2,17 +2,32 @@
   "code": "CA",
   "region": "Canada",
   "sources_attempted": 20,
-  "raw_jobs": 179,
+  "raw_jobs": 180,
   "unique_jobs": 29,
   "duplicates": 8,
   "new_jobs_total_pool": 29,
   "by_status": {
+    "NOT_APPLICABLE": 3,
     "PASS": 7,
     "NO_RESULTS": 8,
-    "NOT_APPLICABLE": 3,
     "CONFIGURATION_REQUIRED": 2
   },
   "by_source": {
+    "mycareersfuture": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "arbeitnow": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "reed": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
     "greenhouse": {
       "found": 153,
       "ingested": 25,
@@ -38,21 +53,6 @@
       "ingested": 0,
       "status": "NO_RESULTS"
     },
-    "mycareersfuture": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
-    "arbeitnow": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
-    "reed": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
     "jooble": {
       "found": 0,
       "ingested": 0,
@@ -74,7 +74,7 @@
       "status": "PASS"
     },
     "jobicy": {
-      "found": 6,
+      "found": 7,
       "ingested": 0,
       "status": "PASS"
     },
@@ -124,9 +124,9 @@
     "AGGREGATOR": 1
   },
   "coverage_status": "FULL",
-  "duration_s": 161.6,
+  "duration_s": 63.5,
   "crashed": null,
-  "generated_at": "2026-09-30T10:42:31Z",
+  "generated_at": "2026-09-30T12:16:19Z",
   "search_terms": [
     "AI Engineer",
     "Machine Learning Engineer"

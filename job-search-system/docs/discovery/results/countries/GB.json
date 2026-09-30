@@ -2,19 +2,29 @@
   "code": "GB",
   "region": "UK",
   "sources_attempted": 20,
-  "raw_jobs": 199,
+  "raw_jobs": 198,
   "unique_jobs": 24,
   "duplicates": 18,
   "new_jobs_total_pool": 24,
   "by_status": {
+    "NOT_APPLICABLE": 2,
     "PASS": 8,
     "NO_RESULTS": 7,
-    "NOT_APPLICABLE": 2,
     "CONFIGURATION_REQUIRED": 3
   },
   "by_source": {
+    "mycareersfuture": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "arbeitnow": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
     "greenhouse": {
-      "found": 179,
+      "found": 178,
       "ingested": 16,
       "status": "PASS"
     },
@@ -37,16 +47,6 @@
       "found": 0,
       "ingested": 0,
       "status": "NO_RESULTS"
-    },
-    "mycareersfuture": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
-    "arbeitnow": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
     },
     "reed": {
       "found": 0,
@@ -124,16 +124,16 @@
     "AGGREGATOR": 1
   },
   "coverage_status": "FULL",
-  "duration_s": 135.3,
+  "duration_s": 59.5,
   "crashed": null,
-  "generated_at": "2026-09-30T10:42:31Z",
+  "generated_at": "2026-09-30T12:16:19Z",
   "search_terms": [
     "AI Engineer",
     "Machine Learning Engineer"
   ],
   "sample_jobs": [
     {
-      "id": 93,
+      "id": 92,
       "title": "Senior Cloud Security Engineer - AI Resilience & Security Enhancements",
       "company": "Form3",
       "location": "United Kingdom (Remote)",
@@ -143,7 +143,7 @@
       "source_types": null
     },
     {
-      "id": 92,
+      "id": 91,
       "title": "Applied AI Manager",
       "company": "9fin",
       "location": "United Kingdom (Hybrid)",
@@ -153,7 +153,7 @@
       "source_types": null
     },
     {
-      "id": 91,
+      "id": 90,
       "title": "Senior Software Engineer, AI Training - NZ",
       "company": "G2i",
       "location": "United Kingdom",
@@ -163,7 +163,7 @@
       "source_types": null
     },
     {
-      "id": 90,
+      "id": 89,
       "title": "Senior Software Engineer, AI Training - UK",
       "company": "G2i",
       "location": "United Kingdom",
@@ -173,7 +173,7 @@
       "source_types": "{\"himalayas\": \"REMOTE_BOARD\"}"
     },
     {
-      "id": 89,
+      "id": 88,
       "title": "Backend Engineer",
       "company": "Substrakt",
       "location": "United Kingdom",
@@ -183,7 +183,7 @@
       "source_types": null
     },
     {
-      "id": 88,
+      "id": 87,
       "title": "Senior Machine Learning Engineer",
       "company": "Chattermill",
       "location": "United Kingdom",
@@ -193,7 +193,7 @@
       "source_types": null
     },
     {
-      "id": 87,
+      "id": 86,
       "title": "Applied AI Engineer, Startups (Codex)",
       "company": "Openai",
       "location": "London, UK",
@@ -203,7 +203,7 @@
       "source_types": null
     },
     {
-      "id": 86,
+      "id": 85,
       "title": "Applied AI Engineer, Quants",
       "company": "Openai",
       "location": "London, UK",
@@ -213,7 +213,7 @@
       "source_types": null
     },
     {
-      "id": 85,
+      "id": 84,
       "title": "Applied AI Engineer, Government, International",
       "company": "Openai",
       "location": "London, UK",
@@ -223,7 +223,7 @@
       "source_types": null
     },
     {
-      "id": 84,
+      "id": 83,
       "title": "Applied AI Engineer, Codex",
       "company": "Openai",
       "location": "London, UK",
@@ -233,7 +233,7 @@
       "source_types": null
     },
     {
-      "id": 83,
+      "id": 82,
       "title": "Applied AI Engineer, Digital Natives",
       "company": "Openai",
       "location": "London, UK",
@@ -243,7 +243,7 @@
       "source_types": null
     },
     {
-      "id": 82,
+      "id": 81,
       "title": "Forward Deployed AI Engineer",
       "company": "Palantir",
       "location": "London, United Kingdom",

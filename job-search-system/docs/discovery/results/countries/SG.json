@@ -2,17 +2,27 @@
   "code": "SG",
   "region": "Singapore",
   "sources_attempted": 20,
-  "raw_jobs": 157,
-  "unique_jobs": 82,
+  "raw_jobs": 156,
+  "unique_jobs": 81,
   "duplicates": 21,
-  "new_jobs_total_pool": 82,
+  "new_jobs_total_pool": 81,
   "by_status": {
-    "PASS": 7,
-    "NO_RESULTS": 9,
     "NOT_APPLICABLE": 2,
+    "PASS": 6,
+    "NO_RESULTS": 10,
     "CONFIGURATION_REQUIRED": 2
   },
   "by_source": {
+    "arbeitnow": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "reed": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
     "greenhouse": {
       "found": 50,
       "ingested": 0,
@@ -43,16 +53,6 @@
       "ingested": 81,
       "status": "PASS"
     },
-    "arbeitnow": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
-    "reed": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
     "jooble": {
       "found": 0,
       "ingested": 0,
@@ -79,9 +79,9 @@
       "status": "NO_RESULTS"
     },
     "himalayas": {
-      "found": 1,
-      "ingested": 1,
-      "status": "PASS"
+      "found": 0,
+      "ingested": 0,
+      "status": "NO_RESULTS"
     },
     "workingnomads": {
       "found": 1,
@@ -124,26 +124,16 @@
     "AGGREGATOR": 1
   },
   "coverage_status": "FULL",
-  "duration_s": 147.6,
+  "duration_s": 61.3,
   "crashed": null,
-  "generated_at": "2026-09-30T10:42:31Z",
+  "generated_at": "2026-09-30T12:16:19Z",
   "search_terms": [
     "AI Engineer",
     "Machine Learning Engineer"
   ],
   "sample_jobs": [
     {
-      "id": 240,
-      "title": "CEO Office - AI Neobank App",
-      "company": "Bjak",
-      "location": "Singapore",
-      "posted_date": "2026-09-30",
-      "url": "https://himalayas.app/companies/bjak/jobs/ceo-office-ai-neobank-app-7415373484",
-      "canonical_source": null,
-      "source_types": null
-    },
-    {
-      "id": 238,
+      "id": 237,
       "title": "Senior AI Engineer",
       "company": "DIGITAL PLACE VISION PTE. LTD.",
       "location": "Singapore",
@@ -153,7 +143,7 @@
       "source_types": null
     },
     {
-      "id": 237,
+      "id": 236,
       "title": "AI Engineer",
       "company": "MERIDIAN & SATURN CAPITAL PTE. LTD.",
       "location": "Singapore",
@@ -163,7 +153,7 @@
       "source_types": null
     },
     {
-      "id": 236,
+      "id": 235,
       "title": "AI Engineer",
       "company": "PERSOL SINGAPORE PTE. LTD.",
       "location": "Singapore",
@@ -173,7 +163,7 @@
       "source_types": null
     },
     {
-      "id": 235,
+      "id": 234,
       "title": "Ai Engineer (Contract to Perm)",
       "company": "HAYS SPECIALIST RECRUITMENT PTE. LTD.",
       "location": "Singapore",
@@ -183,7 +173,7 @@
       "source_types": null
     },
     {
-      "id": 234,
+      "id": 233,
       "title": "Agentic AI Engineer",
       "company": "ASTEK SINGAPORE INNOVATION TECHNOLOGY PTE. LTD.",
       "location": "Singapore",
@@ -193,7 +183,7 @@
       "source_types": null
     },
     {
-      "id": 233,
+      "id": 232,
       "title": "Senior AI Engineer",
       "company": "OMIO TRAVEL SINGAPORE PTE. LTD.",
       "location": "Singapore",
@@ -203,7 +193,7 @@
       "source_types": null
     },
     {
-      "id": 232,
+      "id": 231,
       "title": "ML & AI Engineer",
       "company": "OPTIMUM SOLUTIONS (SINGAPORE) PTE LTD",
       "location": "Singapore",
@@ -213,7 +203,7 @@
       "source_types": null
     },
     {
-      "id": 231,
+      "id": 230,
       "title": "AI Engineer",
       "company": "ET MARKETING PTE. LTD.",
       "location": "Singapore",
@@ -223,7 +213,7 @@
       "source_types": null
     },
     {
-      "id": 230,
+      "id": 229,
       "title": "Senior AI Engineer - AI Agents / RAG / Fine-Tuning",
       "company": "MAGELLAN GLOBAL PTE. LTD.",
       "location": "Singapore",
@@ -233,7 +223,7 @@
       "source_types": null
     },
     {
-      "id": 229,
+      "id": 228,
       "title": "AI Engineer",
       "company": "HYDRAX DIGITAL ASSETS PTE. LTD.",
       "location": "Singapore",
@@ -243,12 +233,22 @@
       "source_types": null
     },
     {
-      "id": 228,
+      "id": 227,
       "title": "AI Engineer",
       "company": "HYDRAX PTE. LTD.",
       "location": "Singapore",
       "posted_date": "2026-09-14",
       "url": "https://www.mycareersfuture.gov.sg/job/83fc774aace5d2f4e51478ad2fd38284",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 226,
+      "title": "AI Engineer / Senior Developer / Software (LLM) - ARTIFICIAL INTELLIGENCE",
+      "company": "PERSONNEL LINK JOBHUB PTE. LTD.",
+      "location": "Singapore",
+      "posted_date": "2026-09-20",
+      "url": "https://www.mycareersfuture.gov.sg/job/ee829acc7988b680c4e208bd713a0422",
       "canonical_source": null,
       "source_types": null
     }

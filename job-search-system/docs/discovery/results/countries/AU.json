@@ -7,12 +7,27 @@
   "duplicates": 1,
   "new_jobs_total_pool": 4,
   "by_status": {
+    "NOT_APPLICABLE": 3,
     "PASS": 5,
     "NO_RESULTS": 10,
-    "NOT_APPLICABLE": 3,
     "CONFIGURATION_REQUIRED": 2
   },
   "by_source": {
+    "mycareersfuture": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "arbeitnow": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "reed": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
     "greenhouse": {
       "found": 49,
       "ingested": 1,
@@ -37,21 +52,6 @@
       "found": 0,
       "ingested": 0,
       "status": "NO_RESULTS"
-    },
-    "mycareersfuture": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
-    "arbeitnow": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
-    "reed": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
     },
     "jooble": {
       "found": 0,
@@ -124,9 +124,9 @@
     "AGGREGATOR": 1
   },
   "coverage_status": "FULL",
-  "duration_s": 139.7,
+  "duration_s": 58.6,
   "crashed": null,
-  "generated_at": "2026-09-30T10:42:31Z",
+  "generated_at": "2026-09-30T12:16:19Z",
   "search_terms": [
     "AI Engineer",
     "Machine Learning Engineer"

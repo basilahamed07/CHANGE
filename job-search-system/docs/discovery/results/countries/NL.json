@@ -2,17 +2,32 @@
   "code": "NL",
   "region": "Netherlands",
   "sources_attempted": 20,
-  "raw_jobs": 58,
+  "raw_jobs": 59,
   "unique_jobs": 2,
   "duplicates": 1,
   "new_jobs_total_pool": 2,
   "by_status": {
+    "NOT_APPLICABLE": 3,
     "PASS": 3,
     "NO_RESULTS": 12,
-    "NOT_APPLICABLE": 3,
     "CONFIGURATION_REQUIRED": 2
   },
   "by_source": {
+    "mycareersfuture": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "arbeitnow": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "reed": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
     "greenhouse": {
       "found": 54,
       "ingested": 1,
@@ -37,21 +52,6 @@
       "found": 3,
       "ingested": 1,
       "status": "PASS"
-    },
-    "mycareersfuture": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
-    "arbeitnow": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
-    "reed": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
     },
     "jooble": {
       "found": 0,
@@ -79,7 +79,7 @@
       "status": "NO_RESULTS"
     },
     "himalayas": {
-      "found": 1,
+      "found": 2,
       "ingested": 0,
       "status": "PASS"
     },
@@ -124,16 +124,16 @@
     "AGGREGATOR": 1
   },
   "coverage_status": "FULL",
-  "duration_s": 150.0,
+  "duration_s": 66.2,
   "crashed": null,
-  "generated_at": "2026-09-30T10:42:31Z",
+  "generated_at": "2026-09-30T12:16:19Z",
   "search_terms": [
     "AI Engineer",
     "Machine Learning Engineer"
   ],
   "sample_jobs": [
     {
-      "id": 145,
+      "id": 144,
       "title": "Python Software Engineer -  AI team",
       "company": "Channable",
       "location": "Utrecht, Utrecht, Netherlands",
@@ -143,7 +143,7 @@
       "source_types": null
     },
     {
-      "id": 144,
+      "id": 143,
       "title": "Sr. Manager, AI Forward Deployed Engineering",
       "company": "databricks",
       "location": "Amsterdam, Netherlands",
@@ -153,7 +153,7 @@
       "source_types": null
     },
     {
-      "id": 143,
+      "id": 142,
       "title": "AI Forward Deployed Engineer - Netherlands",
       "company": "databricks",
       "location": "Amsterdam, Netherlands",
@@ -163,7 +163,7 @@
       "source_types": null
     },
     {
-      "id": 142,
+      "id": 141,
       "title": "Principal Engineer- Java Fullstack -Generative AI",
       "company": "Wells Fargo",
       "location": "Bengaluru, Karnataka",
@@ -173,7 +173,7 @@
       "source_types": null
     },
     {
-      "id": 141,
+      "id": 140,
       "title": "Lead Software Engineer Java Spring boor Gen AI",
       "company": "JPMorganChase",
       "location": "Mumbai, Maharashtra",
@@ -183,7 +183,7 @@
       "source_types": null
     },
     {
-      "id": 140,
+      "id": 139,
       "title": "Senior Software Engineer - Senior AI Engineer",
       "company": "Wells Fargo",
       "location": "Hyderabad, Telangana",
@@ -193,7 +193,7 @@
       "source_types": null
     },
     {
-      "id": 139,
+      "id": 138,
       "title": "Lead AI/ML Engineer",
       "company": "Optum",
       "location": "Gurugram, Haryana",
@@ -203,7 +203,7 @@
       "source_types": null
     },
     {
-      "id": 138,
+      "id": 137,
       "title": "Lead AI Engineer",
       "company": "Capital One",
       "location": "Bengaluru, Karnataka",
@@ -213,7 +213,7 @@
       "source_types": null
     },
     {
-      "id": 137,
+      "id": 136,
       "title": "Experienced Software Engineer-AI Application",
       "company": "Boeing",
       "location": "Bengaluru, Karnataka",
@@ -223,7 +223,7 @@
       "source_types": null
     },
     {
-      "id": 136,
+      "id": 135,
       "title": "SR AI Engineer",
       "company": "Micron Technology",
       "location": "Hyderabad, Telangana",
@@ -233,7 +233,7 @@
       "source_types": null
     },
     {
-      "id": 135,
+      "id": 134,
       "title": "Firmware Validation Engineer (Python - AI, Automation)",
       "company": "Hewlett Packard Enterprise",
       "location": "Bengaluru, Karnataka",
@@ -243,7 +243,7 @@
       "source_types": null
     },
     {
-      "id": 134,
+      "id": 133,
       "title": "Advisor -AI Security Engineer",
       "company": "TransUnion",
       "location": "Bengaluru, Karnataka",

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-30T10:42:31Z",
+  "generated_at": "2026-09-30T12:16:19Z",
   "countries": [
     "AE",
     "AU",
@@ -278,16 +278,16 @@
   ],
   "totals": {
     "sources_attempted": 200,
-    "sources_successful": 53,
-    "raw_jobs": 1058,
-    "unique_jobs": 194,
-    "duplicates_removed": 73,
-    "duration_s": 1390.2
+    "sources_successful": 51,
+    "raw_jobs": 1059,
+    "unique_jobs": 193,
+    "duplicates_removed": 72,
+    "duration_s": 605.6
   },
   "by_status": {
     "CONFIGURATION_REQUIRED": 21,
     "NOT_APPLICABLE": 27,
-    "NO_RESULTS": 99,
-    "PASS": 53
+    "NO_RESULTS": 101,
+    "PASS": 51
   }
 }

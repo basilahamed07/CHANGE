@@ -2,17 +2,27 @@
   "code": "DE",
   "region": "Germany",
   "sources_attempted": 20,
-  "raw_jobs": 86,
-  "unique_jobs": 9,
+  "raw_jobs": 85,
+  "unique_jobs": 8,
   "duplicates": 1,
-  "new_jobs_total_pool": 9,
+  "new_jobs_total_pool": 8,
   "by_status": {
-    "PASS": 6,
-    "NO_RESULTS": 10,
     "NOT_APPLICABLE": 2,
+    "PASS": 5,
+    "NO_RESULTS": 11,
     "CONFIGURATION_REQUIRED": 2
   },
   "by_source": {
+    "mycareersfuture": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
+    "reed": {
+      "found": 0,
+      "ingested": 0,
+      "status": "NOT_APPLICABLE"
+    },
     "greenhouse": {
       "found": 70,
       "ingested": 1,
@@ -38,20 +48,10 @@
       "ingested": 0,
       "status": "NO_RESULTS"
     },
-    "mycareersfuture": {
-      "found": 0,
-      "ingested": 0,
-      "status": "NOT_APPLICABLE"
-    },
     "arbeitnow": {
-      "found": 1,
-      "ingested": 1,
-      "status": "PASS"
-    },
-    "reed": {
       "found": 0,
       "ingested": 0,
-      "status": "NOT_APPLICABLE"
+      "status": "NO_RESULTS"
     },
     "jooble": {
       "found": 0,
@@ -124,16 +124,16 @@
     "AGGREGATOR": 1
   },
   "coverage_status": "FULL",
-  "duration_s": 130.1,
+  "duration_s": 58.5,
   "crashed": null,
-  "generated_at": "2026-09-30T10:42:31Z",
+  "generated_at": "2026-09-30T12:16:19Z",
   "search_terms": [
     "AI Engineer",
     "Machine Learning Engineer"
   ],
   "sample_jobs": [
     {
-      "id": 53,
+      "id": 52,
       "title": "Senior AI Engineer (Forward Deployed)",
       "company": "Ki Performance",
       "location": "Munich, DE; Lisbon, PT; Cologne, DE",
@@ -143,7 +143,7 @@
       "source_types": null
     },
     {
-      "id": 52,
+      "id": 51,
       "title": "Product Lead - AI Neobank App",
       "company": "Bjak",
       "location": "Germany",
@@ -153,7 +153,7 @@
       "source_types": null
     },
     {
-      "id": 51,
+      "id": 50,
       "title": "Mobile Application Developer - AI Neobank App",
       "company": "Bjak",
       "location": "Germany",
@@ -163,7 +163,7 @@
       "source_types": null
     },
     {
-      "id": 50,
+      "id": 49,
       "title": "Full Stack Software Engineer - AI Finance Agent",
       "company": "Bjak",
       "location": "Germany",
@@ -173,22 +173,12 @@
       "source_types": null
     },
     {
-      "id": 49,
+      "id": 48,
       "title": "Machine Learning Engineer",
       "company": "polyaxon",
       "location": "Berlin",
       "posted_date": null,
       "url": "https://wellfound.com/jobs/846920-machine-learning-engineer",
-      "canonical_source": null,
-      "source_types": null
-    },
-    {
-      "id": 48,
-      "title": "AI Engineer (m/w/d) Dealflow",
-      "company": "Flex Capital Management Gmbh",
-      "location": "Berlin",
-      "posted_date": null,
-      "url": "https://www.arbeitnow.com/jobs/companies/flex-capital-management-gmbh/ai-engineer-dealflow-berlin-75769",
       "canonical_source": null,
       "source_types": null
     },
@@ -249,6 +239,16 @@
       "location": "United States; Canada; Poland (Remote)",
       "posted_date": "2026-09-30",
       "url": "https://4dayweek.io/job/senior-product-engineer-out-of-band-policy-engine-ai-platform-at-redpanda-e008a493",
+      "canonical_source": null,
+      "source_types": null
+    },
+    {
+      "id": 41,
+      "title": "Machine Learning Engineer, Underwriting",
+      "company": "Bree Technologies (YC21)",
+      "location": "Canada",
+      "posted_date": null,
+      "url": "https://wellfound.com/jobs/4203314-machine-learning-engineer-underwriting",
       "canonical_source": null,
       "source_types": null
     }
