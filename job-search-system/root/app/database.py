@@ -715,6 +715,19 @@ class Database:
             "classification_source": "ALTER TABLE jobs ADD COLUMN classification_source TEXT",
             "classification_reason": "ALTER TABLE jobs ADD COLUMN classification_reason TEXT",
             "supported_countries": "ALTER TABLE jobs ADD COLUMN supported_countries TEXT",
+            # Stage-3 ELIGIBILITY: persisted decision + provenance so SCORE can
+            # be gated on it and a developer can answer "why rejected?" without
+            # reading code. eligibility_status ∈ ELIGIBLE/INELIGIBLE/
+            # REVIEW_REQUIRED/UNKNOWN; gate+reason = first stop; evidence JSON.
+            "eligibility_status": "ALTER TABLE jobs ADD COLUMN eligibility_status TEXT",
+            "eligibility_gate": "ALTER TABLE jobs ADD COLUMN eligibility_gate TEXT",
+            "eligibility_reason": "ALTER TABLE jobs ADD COLUMN eligibility_reason TEXT",
+            "eligibility_evidence": "ALTER TABLE jobs ADD COLUMN eligibility_evidence TEXT",
+            "eligibility_evaluated_at": "ALTER TABLE jobs ADD COLUMN eligibility_evaluated_at TEXT",
+            # Stage-3 JOB_STATUS gate evidence (never inferred from a scrape
+            # miss — only positive closure signals populate these).
+            "closing_date": "ALTER TABLE jobs ADD COLUMN closing_date TEXT",
+            "job_status": "ALTER TABLE jobs ADD COLUMN job_status TEXT",
         }
 
         # Stage-2 classification metrics blob on search_config (best-effort:
@@ -724,6 +737,9 @@ class Database:
         if sc_columns2 and "classification_metrics" not in sc_columns2:
             await self.db.execute(
                 "ALTER TABLE search_config ADD COLUMN classification_metrics TEXT")
+        if sc_columns2 and "eligibility_metrics" not in sc_columns2:
+            await self.db.execute(
+                "ALTER TABLE search_config ADD COLUMN eligibility_metrics TEXT")
         for col, sql in jobs_migrations.items():
             if col not in jobs_columns:
                 await self.db.execute(sql)
@@ -1672,6 +1688,81 @@ class Database:
                ORDER BY created_at DESC LIMIT ?""", (cutoff, limit))
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
+
+    # -------------------------------------------------- Stage-3 ELIGIBILITY
+
+    async def get_jobs_for_eligibility(self, limit: int = 500,
+                                       force: bool = False) -> list[dict]:
+        """Jobs awaiting an eligibility decision (already location-classified).
+
+        Includes the joined application status so ALREADY_APPLIED can be decided
+        without an N+1 query. `force=True` re-evaluates the whole pool (bounded
+        to `limit` by the caller)."""
+        where = "j.location_classified = 1"
+        if not force:
+            where += " AND j.eligibility_status IS NULL"
+        cursor = await self.db.execute(
+            f"""SELECT j.*, a.status AS application_status, a.id AS application_id
+                FROM jobs j
+                LEFT JOIN applications a ON a.job_id = j.id
+                WHERE {where}
+                LIMIT ?""", (limit,))
+        return [dict(r) for r in await cursor.fetchall()]
+
+    async def set_job_eligibility_batch(self, updates: list[tuple]) -> None:
+        """Persist eligibility decisions. Each tuple: (job_id, status, gate,
+        reason, evidence_json, evaluated_at)."""
+        await self.db.executemany(
+            """UPDATE jobs SET eligibility_status = ?, eligibility_gate = ?,
+                   eligibility_reason = ?, eligibility_evidence = ?,
+                   eligibility_evaluated_at = ?
+               WHERE id = ?""", updates)
+        await self.db.commit()
+
+    async def get_scoreable_jobs(self, limit: int = 10000) -> list[dict]:
+        """Stage-4 SCORE entry: ONLY jobs the eligibility gate marked ELIGIBLE.
+
+        This is the contract that stops INELIGIBLE / REVIEW_REQUIRED jobs from
+        leaking into scoring. Deterministic + dismissal/classification gated.
+        """
+        cursor = await self.db.execute(
+            """SELECT j.* FROM jobs j
+               LEFT JOIN job_scores js ON j.id = js.job_id
+               WHERE js.id IS NULL AND j.dismissed = 0
+               AND j.location_classified = 1
+               AND j.eligibility_status = 'ELIGIBLE' LIMIT ?""", (limit,))
+        return [dict(r) for r in await cursor.fetchall()]
+
+    async def get_eligibility_review_jobs(self, limit: int = 200) -> list[dict]:
+        """Jobs routed to human review by the gate chain."""
+        cursor = await self.db.execute(
+            """SELECT * FROM jobs
+               WHERE eligibility_status = 'REVIEW_REQUIRED' AND dismissed = 0
+               ORDER BY created_at DESC LIMIT ?""", (limit,))
+        return [dict(r) for r in await cursor.fetchall()]
+
+    async def get_eligibility_stats(self) -> dict:
+        """Status + reason tallies for the metrics blob (task §28)."""
+        status_rows = await (await self.db.execute(
+            "SELECT eligibility_status, COUNT(*) FROM jobs "
+            "WHERE eligibility_status IS NOT NULL GROUP BY eligibility_status"))
+        by_status = {r[0]: r[1] for r in await status_rows.fetchall()}
+        reason_rows = await (await self.db.execute(
+            "SELECT eligibility_reason, COUNT(*) FROM jobs "
+            "WHERE eligibility_reason IS NOT NULL GROUP BY eligibility_reason"))
+        by_reason = {r[0]: r[1] for r in await reason_rows.fetchall()}
+        return {"by_status": by_status, "by_reason": by_reason}
+
+    async def set_eligibility_metrics(self, metrics: dict) -> None:
+        """Best-effort Stage-3 metrics sink in search_config (task §28/§29)."""
+        # Upsert: a fresh DB has no search_config row; updated_at is NOT NULL.
+        await self.db.execute(
+            """INSERT INTO search_config (id, eligibility_metrics, updated_at)
+               VALUES (1, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+               eligibility_metrics = excluded.eligibility_metrics""",
+            (json.dumps(metrics), datetime.now(timezone.utc).isoformat()))
+        await self.db.commit()
 
     async def auto_dismiss_stale(self, max_age_days: int = 30, no_date_max_days: int = 30) -> int:
         """Auto-dismiss old jobs. Never dismisses jobs with non-interested applications

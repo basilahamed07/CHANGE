@@ -1,0 +1,436 @@
+{
+  "generated_at": "2026-10-01T10:32:36+00:00",
+  "source_db": "jobagent.db",
+  "db_copy": "/tmp/elig_live_axyavfp0/jobagent.db",
+  "target_regions": [
+    "Australia",
+    "Canada",
+    "Germany",
+    "India",
+    "Ireland",
+    "Netherlands",
+    "Poland",
+    "Singapore",
+    "UAE",
+    "UK",
+    "Remote"
+  ],
+  "total_evaluated": 1962,
+  "by_status": {
+    "INELIGIBLE": 1895,
+    "ELIGIBLE": 67
+  },
+  "by_gate": {
+    "FRESHNESS": 515,
+    "DISMISSED": 1357,
+    "ALREADY_APPLIED": 2,
+    "FINAL_ELIGIBILITY": 67,
+    "LOCATION": 20,
+    "EVIDENCE": 1
+  },
+  "by_reason": {
+    "DISMISSED_BY_COUNTRY_STRATEGY": 941,
+    "STALE_POSTED_DATE": 436,
+    "DISMISSED": 416,
+    "POSTED_DATE_UNKNOWN": 79,
+    "OK": 67,
+    "WORK_TYPE_NOT_ALLOWED": 20,
+    "ALREADY_APPLIED": 2,
+    "MISSING_DESCRIPTION": 1
+  },
+  "per_country": {
+    "Unknown": {
+      "evaluated": 25,
+      "ELIGIBLE": 0,
+      "INELIGIBLE": 25,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "STALE_POSTED_DATE": 24,
+        "POSTED_DATE_UNKNOWN": 1
+      }
+    },
+    "Remote": {
+      "evaluated": 251,
+      "ELIGIBLE": 27,
+      "INELIGIBLE": 224,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "STALE_POSTED_DATE": 149,
+        "DISMISSED": 45,
+        "POSTED_DATE_UNKNOWN": 29,
+        "OK": 27,
+        "ALREADY_APPLIED": 1
+      }
+    },
+    "US": {
+      "evaluated": 1205,
+      "ELIGIBLE": 0,
+      "INELIGIBLE": 1205,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "DISMISSED_BY_COUNTRY_STRATEGY": 938,
+        "DISMISSED": 266,
+        "ALREADY_APPLIED": 1
+      }
+    },
+    "UK": {
+      "evaluated": 103,
+      "ELIGIBLE": 9,
+      "INELIGIBLE": 94,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "STALE_POSTED_DATE": 45,
+        "DISMISSED": 33,
+        "POSTED_DATE_UNKNOWN": 15,
+        "OK": 9,
+        "MISSING_DESCRIPTION": 1
+      }
+    },
+    "Germany": {
+      "evaluated": 36,
+      "ELIGIBLE": 5,
+      "INELIGIBLE": 31,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "POSTED_DATE_UNKNOWN": 16,
+        "DISMISSED": 8,
+        "STALE_POSTED_DATE": 7,
+        "OK": 5
+      }
+    },
+    "Europe": {
+      "evaluated": 1,
+      "ELIGIBLE": 0,
+      "INELIGIBLE": 1,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "DISMISSED_BY_COUNTRY_STRATEGY": 1
+      }
+    },
+    "India": {
+      "evaluated": 28,
+      "ELIGIBLE": 5,
+      "INELIGIBLE": 23,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "STALE_POSTED_DATE": 13,
+        "POSTED_DATE_UNKNOWN": 10,
+        "OK": 5
+      }
+    },
+    "Ukraine": {
+      "evaluated": 1,
+      "ELIGIBLE": 0,
+      "INELIGIBLE": 1,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "DISMISSED_BY_COUNTRY_STRATEGY": 1
+      }
+    },
+    "Netherlands": {
+      "evaluated": 8,
+      "ELIGIBLE": 3,
+      "INELIGIBLE": 5,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "POSTED_DATE_UNKNOWN": 3,
+        "OK": 3,
+        "DISMISSED": 1,
+        "STALE_POSTED_DATE": 1
+      }
+    },
+    "Switzerland": {
+      "evaluated": 1,
+      "ELIGIBLE": 0,
+      "INELIGIBLE": 1,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "DISMISSED_BY_COUNTRY_STRATEGY": 1
+      }
+    },
+    "UAE": {
+      "evaluated": 3,
+      "ELIGIBLE": 0,
+      "INELIGIBLE": 3,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "STALE_POSTED_DATE": 1,
+        "POSTED_DATE_UNKNOWN": 1,
+        "DISMISSED": 1
+      }
+    },
+    "Ireland": {
+      "evaluated": 15,
+      "ELIGIBLE": 4,
+      "INELIGIBLE": 11,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "DISMISSED": 8,
+        "OK": 4,
+        "STALE_POSTED_DATE": 3
+      }
+    },
+    "Singapore": {
+      "evaluated": 262,
+      "ELIGIBLE": 12,
+      "INELIGIBLE": 250,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "STALE_POSTED_DATE": 176,
+        "DISMISSED": 54,
+        "WORK_TYPE_NOT_ALLOWED": 20,
+        "OK": 12
+      }
+    },
+    "Australia": {
+      "evaluated": 2,
+      "ELIGIBLE": 0,
+      "INELIGIBLE": 2,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "POSTED_DATE_UNKNOWN": 2
+      }
+    },
+    "Canada": {
+      "evaluated": 19,
+      "ELIGIBLE": 2,
+      "INELIGIBLE": 17,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "STALE_POSTED_DATE": 15,
+        "OK": 2,
+        "POSTED_DATE_UNKNOWN": 2
+      }
+    },
+    "Poland": {
+      "evaluated": 2,
+      "ELIGIBLE": 0,
+      "INELIGIBLE": 2,
+      "REVIEW_REQUIRED": 0,
+      "UNKNOWN": 0,
+      "reasons": {
+        "STALE_POSTED_DATE": 2
+      }
+    }
+  },
+  "samples": {
+    "eligible": [
+      {
+        "id": 1145,
+        "title": "AI Engineer / Staff Software Engineer - W2 Position",
+        "company": "Saim Technologies",
+        "location": "Remote",
+        "location_region": "Remote",
+        "country_code": null,
+        "posted_date": "2026-09-24T21:44:20Z",
+        "eligibility_status": "ELIGIBLE",
+        "eligibility_gate": "FINAL_ELIGIBILITY",
+        "eligibility_reason": "OK"
+      },
+      {
+        "id": 1163,
+        "title": "Senior AI Engineer/ Node.js, Python, Typescript",
+        "company": "EPAM Systems",
+        "location": "Remote",
+        "location_region": "Remote",
+        "country_code": null,
+        "posted_date": "2026-09-24T20:54:05Z",
+        "eligibility_status": "ELIGIBLE",
+        "eligibility_gate": "FINAL_ELIGIBILITY",
+        "eligibility_reason": "OK"
+      },
+      {
+        "id": 1169,
+        "title": "Senior AI Engineer/ A2A, Databricks, MCP",
+        "company": "EPAM Systems",
+        "location": "Remote",
+        "location_region": "Remote",
+        "country_code": null,
+        "posted_date": "2026-09-24T20:54:00Z",
+        "eligibility_status": "ELIGIBLE",
+        "eligibility_gate": "FINAL_ELIGIBILITY",
+        "eligibility_reason": "OK"
+      },
+      {
+        "id": 1172,
+        "title": "Senior AI Engineer / AI Security & Cybersecurity, AI Governance",
+        "company": "EPAM Systems",
+        "location": "Remote",
+        "location_region": "Remote",
+        "country_code": null,
+        "posted_date": "2026-09-24T20:54:05Z",
+        "eligibility_status": "ELIGIBLE",
+        "eligibility_gate": "FINAL_ELIGIBILITY",
+        "eligibility_reason": "OK"
+      },
+      {
+        "id": 1177,
+        "title": "Senior AI/ML Engineer",
+        "company": "Zolon Tech Solutions Inc",
+        "location": "Remote",
+        "location_region": "Remote",
+        "country_code": null,
+        "posted_date": "2026-09-24T18:41:14Z",
+        "eligibility_status": "ELIGIBLE",
+        "eligibility_gate": "FINAL_ELIGIBILITY",
+        "eligibility_reason": "OK"
+      }
+    ],
+    "stale": [
+      {
+        "id": 10,
+        "title": "Senior AI Engineer",
+        "company": "Lemon.io",
+        "location": "Northern America, LATAM, Europe, APAC",
+        "location_region": "Unknown",
+        "country_code": null,
+        "posted_date": "2026-09-18T12:23:56",
+        "eligibility_status": "INELIGIBLE",
+        "eligibility_gate": "FRESHNESS",
+        "eligibility_reason": "STALE_POSTED_DATE"
+      },
+      {
+        "id": 11,
+        "title": "Senior Data Scientist",
+        "company": "Lemon.io",
+        "location": "Northern America, LATAM, Europe, APAC",
+        "location_region": "Unknown",
+        "country_code": null,
+        "posted_date": "2026-09-16T12:35:28",
+        "eligibility_status": "INELIGIBLE",
+        "eligibility_gate": "FRESHNESS",
+        "eligibility_reason": "STALE_POSTED_DATE"
+      },
+      {
+        "id": 279,
+        "title": "AI Engineer (Applied AI)/ Architect-Remote",
+        "company": "StoneGate-Technologies LLC",
+        "location": "Remote",
+        "location_region": "Remote",
+        "country_code": null,
+        "posted_date": "2026-09-22T21:06:30Z",
+        "eligibility_status": "INELIGIBLE",
+        "eligibility_gate": "FRESHNESS",
+        "eligibility_reason": "STALE_POSTED_DATE"
+      }
+    ],
+    "unknown_date": [
+      {
+        "id": 1,
+        "title": "Member of Technical Staff (full-stack + AI evals)",
+        "company": "Artificial Intelligence Underwriting Company (aiuc.com)",
+        "location": "Full-time",
+        "location_region": "Unknown",
+        "country_code": null,
+        "posted_date": null,
+        "eligibility_status": "INELIGIBLE",
+        "eligibility_gate": "FRESHNESS",
+        "eligibility_reason": "POSTED_DATE_UNKNOWN"
+      },
+      {
+        "id": 2,
+        "title": "Research Engineer (Speech AI/ML)",
+        "company": "Renaissance Philanthropy",
+        "location": "Remote (worldwide)",
+        "location_region": "Remote",
+        "country_code": null,
+        "posted_date": null,
+        "eligibility_status": "INELIGIBLE",
+        "eligibility_gate": "FRESHNESS",
+        "eligibility_reason": "POSTED_DATE_UNKNOWN"
+      },
+      {
+        "id": 6,
+        "title": "Director of Corp Dev \u00b7 Product Marketing Associate \u00b7 MLOps Engineer",
+        "company": "Lucia",
+        "location": "Remote (NYC / SEA / global overlap)",
+        "location_region": "Remote",
+        "country_code": null,
+        "posted_date": null,
+        "eligibility_status": "INELIGIBLE",
+        "eligibility_gate": "FRESHNESS",
+        "eligibility_reason": "POSTED_DATE_UNKNOWN"
+      }
+    ],
+    "dismissed": [
+      {
+        "id": 3,
+        "title": "Machine Learning Engineer",
+        "company": "Steg.AI",
+        "location": "Irvine, CA (Onsite)",
+        "location_region": "US",
+        "country_code": null,
+        "posted_date": null,
+        "eligibility_status": "INELIGIBLE",
+        "eligibility_gate": "DISMISSED",
+        "eligibility_reason": "DISMISSED_BY_COUNTRY_STRATEGY"
+      },
+      {
+        "id": 4,
+        "title": "Agent Builder",
+        "company": "Catalyst\u00b7Wayfare AI",
+        "location": "Remote (US ET Overlap)",
+        "location_region": "US",
+        "country_code": null,
+        "posted_date": null,
+        "eligibility_status": "INELIGIBLE",
+        "eligibility_gate": "DISMISSED",
+        "eligibility_reason": "DISMISSED_BY_COUNTRY_STRATEGY"
+      },
+      {
+        "id": 5,
+        "title": "DevOps Engineer",
+        "company": "Aeolus",
+        "location": "San Francisco, CA (onsite)",
+        "location_region": "US",
+        "country_code": null,
+        "posted_date": null,
+        "eligibility_status": "INELIGIBLE",
+        "eligibility_gate": "DISMISSED",
+        "eligibility_reason": "DISMISSED_BY_COUNTRY_STRATEGY"
+      }
+    ],
+    "already_applied": [
+      {
+        "id": 149,
+        "title": "AI Engineer",
+        "company": "Oberon",
+        "location": "Los Angeles, CA",
+        "location_region": "US",
+        "country_code": null,
+        "posted_date": "2026-09-23",
+        "eligibility_status": "INELIGIBLE",
+        "eligibility_gate": "ALREADY_APPLIED",
+        "eligibility_reason": "ALREADY_APPLIED"
+      },
+      {
+        "id": 1167,
+        "title": "Senior AI Engineer/ AI Agents Development",
+        "company": "EPAM Systems",
+        "location": "Remote",
+        "location_region": "Remote",
+        "country_code": null,
+        "posted_date": "2026-09-24T20:54:00Z",
+        "eligibility_status": "INELIGIBLE",
+        "eligibility_gate": "ALREADY_APPLIED",
+        "eligibility_reason": "ALREADY_APPLIED"
+      }
+    ]
+  },
+  "duration_s": 1.0
+}

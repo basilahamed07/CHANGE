@@ -59,8 +59,11 @@ step) · CLI over the same service layer · per-user workspaces (M15b).
   │                    + bounded AI fallback for residue only; writes country_code
   │                    + confidence + source + reason (docs/classify/**)
   ▼
-  3. ELIGIBILITY ───── gate chain w/ reason codes (dismissed → freshness →
-  │                    evidence → repost-pending) — ZERO LLM on rejects
+  3. ELIGIBILITY ───── explicit gate chain (data-sanity → dismissed →
+  │                    already-applied → closed → freshness → location/country
+  │                    → evidence) w/ status+gate+reason+evidence persisted;
+  │                    ONLY 'ELIGIBLE' jobs reach SCORE (get_scoreable_jobs).
+  │                    ZERO LLM on rejects (docs/eligibility/**)
   ▼
   4. SCORE (AI) ────── per-job relevance/concerns/keywords; circuit breaker
   │                    + graceful quota degradation (never blocks pipeline)

@@ -271,6 +271,11 @@ async def lifespan(app: FastAPI):
         async def scheduled_scoring():
             try:
                 await run_location_classification(app.state.bg_db, app.state.ai_client)
+                # Stage-3 ELIGIBILITY: persist the gate decision before scoring
+                # so only ELIGIBLE jobs reach SCORE (contract, Golden Rule 4).
+                from app.scheduler import run_eligibility_pass
+                await run_eligibility_pass(app.state.bg_db,
+                                           getattr(app.state, "country_registry", None))
                 await app.state.score_unscored(app.state.bg_db)
             except Exception:
                 logger.exception("AI scoring failed")
@@ -459,7 +464,12 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
             if not matcher:
                 logger.warning("Matcher not available, skipping scoring")
                 return
-            all_unscored = await db.get_unscored_jobs(limit=10000)
+            # Stage-3 gate: evaluate any un-evaluated jobs, then read ONLY the
+            # ELIGIBLE ones — INELIGIBLE / REVIEW_REQUIRED never enter SCORE.
+            from app.scheduler import run_eligibility_pass
+            await run_eligibility_pass(
+                db, getattr(app.state, "country_registry", None))
+            all_unscored = await db.get_scoreable_jobs(limit=10000)
             total = len(all_unscored)
             if total == 0:
                 return

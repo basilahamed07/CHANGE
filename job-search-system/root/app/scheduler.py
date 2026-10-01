@@ -374,6 +374,75 @@ async def run_location_classification(db: Database, ai_client=None) -> int:
     return total_classified
 
 
+async def run_eligibility_pass(db: Database, registry=None, force: bool = False,
+                               limit: int = 2000) -> int:
+    """Stage-3 ELIGIBILITY: evaluate the deterministic gate chain and PERSIST
+    the decision (status/gate/reason/evidence) per job.
+
+    This is the bridge that stops INELIGIBLE / REVIEW_REQUIRED jobs from
+    leaking into SCORE: `db.get_scoreable_jobs()` only returns ELIGIBLE rows.
+    Deterministic, no AI. Idempotent — only un-evaluated jobs are processed
+    unless `force=True`.
+    """
+    from datetime import datetime, timezone
+    from app.eligibility import build_eligibility_engine
+    from app.country_registry import CountryRegistry
+    from app.config import get_settings
+
+    if registry is None:
+        try:
+            registry = CountryRegistry(get_settings().countries_dir).load()
+        except Exception:
+            logger.warning("eligibility: country registry unavailable — region-only gating")
+            registry = None
+    engine = await build_eligibility_engine(db, registry)
+
+    metrics = {"total_evaluated": 0, "eligible": 0, "ineligible": 0,
+               "review_required": 0, "unknown": 0,
+               "by_gate": {}, "by_reason": {}}
+    t0 = asyncio.get_event_loop().time()
+    evaluated = 0
+    while True:
+        jobs = await db.get_jobs_for_eligibility(
+            limit=(limit if force else 500), force=force)
+        if not jobs:
+            break
+        now_iso = datetime.now(timezone.utc).isoformat()
+        updates = []
+        for job in jobs:
+            app = None
+            if job.get("application_status"):
+                app = {"status": job["application_status"],
+                       "id": job.get("application_id")}
+            result = engine.check(job, application=app)
+            # SQL parameter order: (status, gate, reason, evidence, ts, job_id)
+            updates.append((result.status, result.gate, result.reason,
+                            result.to_evidence_json(), now_iso, job["id"]))
+            m = metrics
+            m["total_evaluated"] += 1
+            m[result.status.lower()] = m.get(result.status.lower(), 0) + 1
+            m["by_gate"][result.gate] = m["by_gate"].get(result.gate, 0) + 1
+            m["by_reason"][result.reason] = m["by_reason"].get(result.reason, 0) + 1
+            logger.info("[ELIGIBILITY][job=%s] status=%s gate=%s reason=%s",
+                        job["id"], result.status, result.gate, result.reason)
+        if updates:
+            await db.set_job_eligibility_batch(updates)
+        evaluated += len(updates)
+        if force:
+            break
+        await asyncio.sleep(0)
+    metrics["duration_s"] = round(asyncio.get_event_loop().time() - t0, 1)
+    try:
+        await db.set_eligibility_metrics(metrics)
+    except Exception:
+        pass  # metrics are best-effort; never block the pipeline
+    if evaluated:
+        logger.info("[ELIGIBILITY] done: %s jobs, %s", evaluated,
+                    {k: v for k, v in metrics.items()
+                     if v and k not in ("by_gate", "by_reason")})
+    return evaluated
+
+
 async def apply_country_strategy(db: Database, registry, sync_allowed_regions: bool = True) -> dict:
     """M3: apply the country strategy to the EXISTING job pool (no scraping).
 

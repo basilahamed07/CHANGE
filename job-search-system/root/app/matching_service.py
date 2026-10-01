@@ -124,8 +124,14 @@ async def score_all_unscored(app_state, db, limit: int = 2000) -> dict:
 
     Zero AI cost — this is the free deterministic baseline layer. Returns a
     machine-readable run summary (count, avg, blockers found).
+
+    Stage-3 gate: evaluate any un-evaluated jobs first, then read ONLY the
+    ELIGIBLE ones (`get_scoreable_jobs`) so INELIGIBLE / REVIEW_REQUIRED jobs
+    can never enter SCORE.
     """
-    jobs = await db.get_unscored_jobs(limit=limit)
+    from app.scheduler import run_eligibility_pass
+    await run_eligibility_pass(db, getattr(app_state, "country_registry", None))
+    jobs = await db.get_scoreable_jobs(limit=limit)
     if not jobs:
         return {"scored": 0, "total": 0, "avg": None, "blockers": 0, "engine": "hybrid-m6"}
 
