@@ -1,0 +1,736 @@
+{
+  "generated_at": "2026-10-01T09:51:31+00:00",
+  "source_pool": "docs/discovery/results/countries/*.json#sample_jobs",
+  "note": "sweep artifacts carry no description, so the DESCRIPTION tier is exercised by the curated battery + unit suite, not the live rows. AI_FALLBACK is 0 by construction (deterministic chain, ai_client=None).",
+  "curated": {
+    "passed": 16,
+    "total": 16,
+    "cases": [
+      {
+        "label": "structured country field",
+        "ok": true,
+        "expected": {
+          "country_code": "DE",
+          "region": "Germany",
+          "source": "STRUCTURED_COUNTRY"
+        },
+        "got": {
+          "country_code": "DE",
+          "region": "Germany",
+          "source": "STRUCTURED_COUNTRY",
+          "confidence": "HIGH",
+          "work_type": ""
+        }
+      },
+      {
+        "label": "text location UK alias",
+        "ok": true,
+        "expected": {
+          "country_code": "GB",
+          "region": "UK",
+          "source": "TEXT_LOCATION"
+        },
+        "got": {
+          "country_code": "GB",
+          "region": "UK",
+          "source": "TEXT_LOCATION",
+          "confidence": "HIGH",
+          "work_type": "ONSITE"
+        }
+      },
+      {
+        "label": "text location UAE alias",
+        "ok": true,
+        "expected": {
+          "country_code": "AE",
+          "region": "UAE",
+          "source": "TEXT_LOCATION"
+        },
+        "got": {
+          "country_code": "AE",
+          "region": "UAE",
+          "source": "TEXT_LOCATION",
+          "confidence": "HIGH",
+          "work_type": "ONSITE"
+        }
+      },
+      {
+        "label": "city map Berlin",
+        "ok": true,
+        "expected": {
+          "country_code": "DE",
+          "region": "Germany",
+          "source": "CITY_MAP"
+        },
+        "got": {
+          "country_code": "DE",
+          "region": "Germany",
+          "source": "CITY_MAP",
+          "confidence": "HIGH",
+          "work_type": "ONSITE"
+        }
+      },
+      {
+        "label": "multi-location primary",
+        "ok": true,
+        "expected": {
+          "country_code": "SG",
+          "region": "Singapore",
+          "source": "TEXT_LOCATION"
+        },
+        "got": {
+          "country_code": "SG",
+          "region": "Singapore",
+          "source": "TEXT_LOCATION",
+          "confidence": "HIGH",
+          "work_type": "ONSITE"
+        }
+      },
+      {
+        "label": "remote explicit country",
+        "ok": true,
+        "expected": {
+          "country_code": "IN",
+          "region": "India",
+          "source": "TEXT_LOCATION"
+        },
+        "got": {
+          "country_code": "IN",
+          "region": "India",
+          "source": "TEXT_LOCATION",
+          "confidence": "HIGH",
+          "work_type": "REMOTE"
+        }
+      },
+      {
+        "label": "remote region APAC",
+        "ok": true,
+        "expected": {
+          "country_code": null,
+          "region": "APAC",
+          "source": "TEXT_LOCATION"
+        },
+        "got": {
+          "country_code": null,
+          "region": "APAC",
+          "source": "TEXT_LOCATION",
+          "confidence": "MEDIUM",
+          "work_type": "REMOTE"
+        }
+      },
+      {
+        "label": "remote region EMEA",
+        "ok": true,
+        "expected": {
+          "country_code": null,
+          "region": "EMEA",
+          "source": "TEXT_LOCATION"
+        },
+        "got": {
+          "country_code": null,
+          "region": "EMEA",
+          "source": "TEXT_LOCATION",
+          "confidence": "MEDIUM",
+          "work_type": "REMOTE"
+        }
+      },
+      {
+        "label": "remote worldwide",
+        "ok": true,
+        "expected": {
+          "country_code": null,
+          "region": "GLOBAL",
+          "source": "TEXT_LOCATION"
+        },
+        "got": {
+          "country_code": null,
+          "region": "GLOBAL",
+          "source": "TEXT_LOCATION",
+          "confidence": "MEDIUM",
+          "work_type": "REMOTE"
+        }
+      },
+      {
+        "label": "remote bare with residency",
+        "ok": true,
+        "expected": {
+          "country_code": "DE",
+          "region": "Germany",
+          "source": "DESCRIPTION"
+        },
+        "got": {
+          "country_code": "DE",
+          "region": "Germany",
+          "source": "DESCRIPTION",
+          "confidence": "MEDIUM",
+          "work_type": "REMOTE"
+        }
+      },
+      {
+        "label": "description location evidence",
+        "ok": true,
+        "expected": {
+          "country_code": "IE",
+          "region": "Ireland",
+          "source": "DESCRIPTION"
+        },
+        "got": {
+          "country_code": "IE",
+          "region": "Ireland",
+          "source": "DESCRIPTION",
+          "confidence": "MEDIUM",
+          "work_type": "REMOTE"
+        }
+      },
+      {
+        "label": "source hint LOW only",
+        "ok": true,
+        "expected": {
+          "country_code": "SG",
+          "region": "Singapore",
+          "source": "SOURCE_HINT"
+        },
+        "got": {
+          "country_code": "SG",
+          "region": "Singapore",
+          "source": "SOURCE_HINT",
+          "confidence": "LOW",
+          "work_type": "ONSITE"
+        }
+      },
+      {
+        "label": "unconfigured place falls back to source hint (LOW)",
+        "ok": true,
+        "expected": {
+          "country_code": "SG",
+          "region": "Singapore",
+          "source": "SOURCE_HINT"
+        },
+        "got": {
+          "country_code": "SG",
+          "region": "Singapore",
+          "source": "SOURCE_HINT",
+          "confidence": "LOW",
+          "work_type": "ONSITE"
+        }
+      },
+      {
+        "label": "source hint never overrides explicit text",
+        "ok": true,
+        "expected": {
+          "country_code": "IE",
+          "region": "Ireland",
+          "source": "CITY_MAP"
+        },
+        "got": {
+          "country_code": "IE",
+          "region": "Ireland",
+          "source": "CITY_MAP",
+          "confidence": "HIGH",
+          "work_type": "ONSITE"
+        }
+      },
+      {
+        "label": "honest unknown without any signal",
+        "ok": true,
+        "expected": {
+          "country_code": null,
+          "region": "UNKNOWN",
+          "source": "UNKNOWN"
+        },
+        "got": {
+          "country_code": null,
+          "region": "UNKNOWN",
+          "source": "UNKNOWN",
+          "confidence": "UNKNOWN",
+          "work_type": ""
+        }
+      },
+      {
+        "label": "hybrid London work type",
+        "ok": true,
+        "expected": {
+          "country_code": "GB",
+          "region": "UK",
+          "source": "CITY_MAP"
+        },
+        "got": {
+          "country_code": "GB",
+          "region": "UK",
+          "source": "CITY_MAP",
+          "confidence": "HIGH",
+          "work_type": "HYBRID"
+        }
+      }
+    ]
+  },
+  "live": {
+    "countries": [
+      {
+        "code": "AE",
+        "region": "UAE",
+        "tested": 2,
+        "same_country": 2,
+        "other_country": 0,
+        "unknown": 0,
+        "remote": 0,
+        "hybrid": 0,
+        "onsite": 2,
+        "ai_fallback": 0,
+        "conflicts": 0,
+        "by_source": {
+          "CITY_MAP": 1,
+          "TEXT_LOCATION": 1
+        },
+        "by_confidence": {
+          "HIGH": 2
+        },
+        "suspicious": []
+      },
+      {
+        "code": "AU",
+        "region": "Australia",
+        "tested": 6,
+        "same_country": 4,
+        "other_country": 2,
+        "unknown": 0,
+        "remote": 0,
+        "hybrid": 0,
+        "onsite": 6,
+        "ai_fallback": 0,
+        "conflicts": 0,
+        "by_source": {
+          "CITY_MAP": 2,
+          "TEXT_LOCATION": 4
+        },
+        "by_confidence": {
+          "HIGH": 6
+        },
+        "suspicious": [
+          {
+            "id": 2,
+            "title": "Junior DVN Backend Engineer",
+            "location": "Dubai",
+            "search_country": "AU",
+            "classified_country": "AE",
+            "source": "CITY_MAP",
+            "reason": "city 'dubai' \u2192 AE"
+          },
+          {
+            "id": 1,
+            "title": "Applied AI Engineer",
+            "location": "Abu Dhabi, UAE",
+            "search_country": "AU",
+            "classified_country": "AE",
+            "source": "TEXT_LOCATION",
+            "reason": "explicit country in location text"
+          }
+        ]
+      },
+      {
+        "code": "CA",
+        "region": "Canada",
+        "tested": 12,
+        "same_country": 12,
+        "other_country": 0,
+        "unknown": 0,
+        "remote": 9,
+        "hybrid": 0,
+        "onsite": 3,
+        "ai_fallback": 0,
+        "conflicts": 0,
+        "by_source": {
+          "TEXT_LOCATION": 11,
+          "CITY_MAP": 1
+        },
+        "by_confidence": {
+          "HIGH": 12
+        },
+        "suspicious": []
+      },
+      {
+        "code": "DE",
+        "region": "Germany",
+        "tested": 12,
+        "same_country": 9,
+        "other_country": 3,
+        "unknown": 0,
+        "remote": 3,
+        "hybrid": 0,
+        "onsite": 9,
+        "ai_fallback": 0,
+        "conflicts": 0,
+        "by_source": {
+          "TEXT_LOCATION": 11,
+          "CITY_MAP": 1
+        },
+        "by_confidence": {
+          "HIGH": 12
+        },
+        "suspicious": [
+          {
+            "id": 43,
+            "title": "Staff Product Engineer, Agentic Identity & Governa",
+            "location": "United States; Canada; Poland (Remote)",
+            "search_country": "DE",
+            "classified_country": "CA",
+            "source": "TEXT_LOCATION",
+            "reason": "remote with explicit country qualifier"
+          },
+          {
+            "id": 42,
+            "title": "Senior Product Engineer, Out-of-Band Policy Engine",
+            "location": "United States; Canada; Poland (Remote)",
+            "search_country": "DE",
+            "classified_country": "CA",
+            "source": "TEXT_LOCATION",
+            "reason": "remote with explicit country qualifier"
+          },
+          {
+            "id": 41,
+            "title": "Machine Learning Engineer, Underwriting",
+            "location": "Canada",
+            "search_country": "DE",
+            "classified_country": "CA",
+            "source": "TEXT_LOCATION",
+            "reason": "explicit country in location text"
+          }
+        ]
+      },
+      {
+        "code": "GB",
+        "region": "UK",
+        "tested": 12,
+        "same_country": 12,
+        "other_country": 0,
+        "unknown": 0,
+        "remote": 1,
+        "hybrid": 1,
+        "onsite": 10,
+        "ai_fallback": 0,
+        "conflicts": 0,
+        "by_source": {
+          "TEXT_LOCATION": 12
+        },
+        "by_confidence": {
+          "HIGH": 12
+        },
+        "suspicious": []
+      },
+      {
+        "code": "IE",
+        "region": "Ireland",
+        "tested": 12,
+        "same_country": 5,
+        "other_country": 7,
+        "unknown": 0,
+        "remote": 3,
+        "hybrid": 1,
+        "onsite": 8,
+        "ai_fallback": 0,
+        "conflicts": 0,
+        "by_source": {
+          "TEXT_LOCATION": 12
+        },
+        "by_confidence": {
+          "HIGH": 12
+        },
+        "suspicious": [
+          {
+            "id": 92,
+            "title": "Senior Cloud Security Engineer - AI Resilience & S",
+            "location": "United Kingdom (Remote)",
+            "search_country": "IE",
+            "classified_country": "GB",
+            "source": "TEXT_LOCATION",
+            "reason": "remote with explicit country qualifier"
+          },
+          {
+            "id": 91,
+            "title": "Applied AI Manager",
+            "location": "United Kingdom (Hybrid)",
+            "search_country": "IE",
+            "classified_country": "GB",
+            "source": "TEXT_LOCATION",
+            "reason": "explicit country in location text"
+          },
+          {
+            "id": 90,
+            "title": "Senior Software Engineer, AI Training - NZ",
+            "location": "United Kingdom",
+            "search_country": "IE",
+            "classified_country": "GB",
+            "source": "TEXT_LOCATION",
+            "reason": "explicit country in location text"
+          },
+          {
+            "id": 89,
+            "title": "Senior Software Engineer, AI Training - UK",
+            "location": "United Kingdom",
+            "search_country": "IE",
+            "classified_country": "GB",
+            "source": "TEXT_LOCATION",
+            "reason": "explicit country in location text"
+          },
+          {
+            "id": 88,
+            "title": "Backend Engineer",
+            "location": "United Kingdom",
+            "search_country": "IE",
+            "classified_country": "GB",
+            "source": "TEXT_LOCATION",
+            "reason": "explicit country in location text"
+          },
+          {
+            "id": 87,
+            "title": "Senior Machine Learning Engineer",
+            "location": "United Kingdom",
+            "search_country": "IE",
+            "classified_country": "GB",
+            "source": "TEXT_LOCATION",
+            "reason": "explicit country in location text"
+          },
+          {
+            "id": 86,
+            "title": "Applied AI Engineer, Startups (Codex)",
+            "location": "London, UK",
+            "search_country": "IE",
+            "classified_country": "GB",
+            "source": "TEXT_LOCATION",
+            "reason": "explicit country in location text"
+          }
+        ]
+      },
+      {
+        "code": "IN",
+        "region": "India",
+        "tested": 12,
+        "same_country": 12,
+        "other_country": 0,
+        "unknown": 0,
+        "remote": 0,
+        "hybrid": 0,
+        "onsite": 12,
+        "ai_fallback": 0,
+        "conflicts": 0,
+        "by_source": {
+          "CITY_MAP": 12
+        },
+        "by_confidence": {
+          "HIGH": 12
+        },
+        "suspicious": []
+      },
+      {
+        "code": "NL",
+        "region": "Netherlands",
+        "tested": 12,
+        "same_country": 3,
+        "other_country": 9,
+        "unknown": 0,
+        "remote": 0,
+        "hybrid": 0,
+        "onsite": 12,
+        "ai_fallback": 0,
+        "conflicts": 0,
+        "by_source": {
+          "TEXT_LOCATION": 3,
+          "CITY_MAP": 9
+        },
+        "by_confidence": {
+          "HIGH": 12
+        },
+        "suspicious": [
+          {
+            "id": 141,
+            "title": "Principal Engineer- Java Fullstack -Generative AI",
+            "location": "Bengaluru, Karnataka",
+            "search_country": "NL",
+            "classified_country": "IN",
+            "source": "CITY_MAP",
+            "reason": "city 'bengaluru' \u2192 IN"
+          },
+          {
+            "id": 140,
+            "title": "Lead Software Engineer Java Spring boor Gen AI",
+            "location": "Mumbai, Maharashtra",
+            "search_country": "NL",
+            "classified_country": "IN",
+            "source": "CITY_MAP",
+            "reason": "city 'mumbai' \u2192 IN"
+          },
+          {
+            "id": 139,
+            "title": "Senior Software Engineer - Senior AI Engineer",
+            "location": "Hyderabad, Telangana",
+            "search_country": "NL",
+            "classified_country": "IN",
+            "source": "CITY_MAP",
+            "reason": "city 'hyderabad' \u2192 IN"
+          },
+          {
+            "id": 138,
+            "title": "Lead AI/ML Engineer",
+            "location": "Gurugram, Haryana",
+            "search_country": "NL",
+            "classified_country": "IN",
+            "source": "CITY_MAP",
+            "reason": "city 'gurugram' \u2192 IN"
+          },
+          {
+            "id": 137,
+            "title": "Lead AI Engineer",
+            "location": "Bengaluru, Karnataka",
+            "search_country": "NL",
+            "classified_country": "IN",
+            "source": "CITY_MAP",
+            "reason": "city 'bengaluru' \u2192 IN"
+          },
+          {
+            "id": 136,
+            "title": "Experienced Software Engineer-AI Application",
+            "location": "Bengaluru, Karnataka",
+            "search_country": "NL",
+            "classified_country": "IN",
+            "source": "CITY_MAP",
+            "reason": "city 'bengaluru' \u2192 IN"
+          },
+          {
+            "id": 135,
+            "title": "SR AI Engineer",
+            "location": "Hyderabad, Telangana",
+            "search_country": "NL",
+            "classified_country": "IN",
+            "source": "CITY_MAP",
+            "reason": "city 'hyderabad' \u2192 IN"
+          },
+          {
+            "id": 134,
+            "title": "Firmware Validation Engineer (Python - AI, Automat",
+            "location": "Bengaluru, Karnataka",
+            "search_country": "NL",
+            "classified_country": "IN",
+            "source": "CITY_MAP",
+            "reason": "city 'bengaluru' \u2192 IN"
+          },
+          {
+            "id": 133,
+            "title": "Advisor -AI Security Engineer",
+            "location": "Bengaluru, Karnataka",
+            "search_country": "NL",
+            "classified_country": "IN",
+            "source": "CITY_MAP",
+            "reason": "city 'bengaluru' \u2192 IN"
+          }
+        ]
+      },
+      {
+        "code": "PL",
+        "region": "Poland",
+        "tested": 12,
+        "same_country": 6,
+        "other_country": 6,
+        "unknown": 0,
+        "remote": 5,
+        "hybrid": 0,
+        "onsite": 7,
+        "ai_fallback": 0,
+        "conflicts": 0,
+        "by_source": {
+          "TEXT_LOCATION": 9,
+          "CITY_MAP": 3
+        },
+        "by_confidence": {
+          "HIGH": 12
+        },
+        "suspicious": [
+          {
+            "id": 144,
+            "title": "Python Software Engineer -  AI team",
+            "location": "Utrecht, Utrecht, Netherlands",
+            "search_country": "PL",
+            "classified_country": "NL",
+            "source": "TEXT_LOCATION",
+            "reason": "explicit country in location text"
+          },
+          {
+            "id": 143,
+            "title": "Sr. Manager, AI Forward Deployed Engineering",
+            "location": "Amsterdam, Netherlands",
+            "search_country": "PL",
+            "classified_country": "NL",
+            "source": "TEXT_LOCATION",
+            "reason": "explicit country in location text"
+          },
+          {
+            "id": 142,
+            "title": "AI Forward Deployed Engineer - Netherlands",
+            "location": "Amsterdam, Netherlands",
+            "search_country": "PL",
+            "classified_country": "NL",
+            "source": "TEXT_LOCATION",
+            "reason": "explicit country in location text"
+          },
+          {
+            "id": 141,
+            "title": "Principal Engineer- Java Fullstack -Generative AI",
+            "location": "Bengaluru, Karnataka",
+            "search_country": "PL",
+            "classified_country": "IN",
+            "source": "CITY_MAP",
+            "reason": "city 'bengaluru' \u2192 IN"
+          },
+          {
+            "id": 140,
+            "title": "Lead Software Engineer Java Spring boor Gen AI",
+            "location": "Mumbai, Maharashtra",
+            "search_country": "PL",
+            "classified_country": "IN",
+            "source": "CITY_MAP",
+            "reason": "city 'mumbai' \u2192 IN"
+          },
+          {
+            "id": 139,
+            "title": "Senior Software Engineer - Senior AI Engineer",
+            "location": "Hyderabad, Telangana",
+            "search_country": "PL",
+            "classified_country": "IN",
+            "source": "CITY_MAP",
+            "reason": "city 'hyderabad' \u2192 IN"
+          }
+        ]
+      },
+      {
+        "code": "SG",
+        "region": "Singapore",
+        "tested": 12,
+        "same_country": 12,
+        "other_country": 0,
+        "unknown": 0,
+        "remote": 0,
+        "hybrid": 0,
+        "onsite": 12,
+        "ai_fallback": 0,
+        "conflicts": 0,
+        "by_source": {
+          "CITY_MAP": 12
+        },
+        "by_confidence": {
+          "HIGH": 12
+        },
+        "suspicious": []
+      }
+    ],
+    "totals": {
+      "tested": 104,
+      "same_country": 77,
+      "other_country": 27,
+      "unknown": 0,
+      "remote": 21,
+      "hybrid": 2,
+      "onsite": 81,
+      "ai_fallback": 0,
+      "conflicts": 0
+    }
+  }
+}

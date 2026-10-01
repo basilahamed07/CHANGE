@@ -232,65 +232,140 @@ async def run_scrape_cycle(db: Database, scrapers: list, search_terms: list[str]
     return total_new
 
 
-async def run_location_classification(db: Database, ai_client=None) -> int:
-    """Classify job locations and dismiss jobs outside allowed regions.
+def _classification_row(job: dict, result) -> tuple:
+    """Build the 8-tuple persisted by `set_job_classifications_batch`.
 
-    Two-pass system:
-    1. Rule-based classification (no API cost)
-    2. LLM classification for ambiguous locations (batched)
-    Then dismiss jobs outside allowed regions.
+    Region-string contract with the existing pipeline: `jobs.location_region`
+    holds names like 'Germany'/'UK'/'Remote'. Country-classified jobs use the
+    registry region string; region-only/unknown keep their bucket. Conflict
+    evidence (description disagreeing with the location) is appended to the
+    reason and returned in slot 7 for metrics.
     """
-    from app.location_classifier import classify_location_rule_based, classify_locations_llm
+    from app.classification import detect_conflict
+    conflict = detect_conflict(job, result)
+    return (job["id"], result.region or "Unknown", result.country_code,
+            result.classification_confidence, result.classification_source,
+            result.classification_reason, result.supported_countries, conflict)
+
+
+async def run_location_classification(db: Database, ai_client=None) -> int:
+    """Stage-2 CLASSIFY: classify job locations + record confidence/evidence.
+
+    Priority chain (app/classification.py): structured country → location text
+    → city map → description evidence → ATS metadata → source hint (LOW only)
+    → LLM batch for the residue → honest UNKNOWN. Source country is a HINT,
+    never the answer. Persists confidence/source/reason so unchanged jobs are
+    never re-classified (idempotent; task §16/§17). Then dismisses jobs
+    outside allowed regions — that dismissal IS Stage-3 territory but is the
+    pre-existing behavior of this pass (kept; eligibility re-checks anyway).
+    """
+    from app.classification import (classify_job, classify_job_ai, SRC_UNKNOWN)
+    from app.country_registry import CountryRegistry
+    from app.config import get_settings
+
+    # code → region-string mapper from the country registry (GB → 'UK' etc.)
+    code_to_region: dict[str, str] = {}
+    try:
+        _reg = CountryRegistry(get_settings().countries_dir).load()
+        for c in _reg.countries.values():
+            code_to_region[c.code] = c.region
+    except Exception:
+        logger.warning("classification: country registry unavailable — using defaults")
+
+    def _region_of(code: str) -> str:
+        return code_to_region.get(code) or code
 
     total_classified = 0
+    metrics = {"total": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0,
+               "remote": 0, "hybrid": 0, "onsite": 0,
+               "ai_fallback": 0, "conflicts": 0,
+               "no_ai_needed": 0, "same_country": 0, "other_country": 0}
+    t0 = asyncio.get_event_loop().time()
     while True:
         jobs = await db.get_unclassified_jobs(limit=500)
         if not jobs:
             break
 
-        classified = 0
-        ambiguous = []
-        batch_updates = []
+        decisions: list[tuple] = []   # (job, final Classification)
+        residues: list[tuple] = []    # deterministic UNKNOWNs eligible for AI
 
-        # Pass 1: rule-based
+        # Pass 1: deterministic priority chain (no API cost)
         for job in jobs:
-            region = classify_location_rule_based(job.get("location", ""))
-            if region is not None:
-                batch_updates.append((job["id"], region))
-                classified += 1
+            result = classify_job(job, region_of=_region_of)
+            # Residue = deterministic chain returned honest UNKNOWN. Those —
+            # and ONLY those — are eligible for the bounded AI tier (§10).
+            if result.classification_source == SRC_UNKNOWN and ai_client is not None:
+                residues.append((job, result))
             else:
-                ambiguous.append((job["id"], job.get("location", "")))
+                decisions.append((job, result))
             await asyncio.sleep(0)
 
-        # Write rule-based results
-        if batch_updates:
-            await db.set_job_location_regions_batch(batch_updates)
-
-        # Pass 2: LLM for ambiguous
-        if ambiguous and ai_client:
+        # Pass 2: bounded, validated AI fallback for the residue (semantics
+        # only). One job per call, short bounded prompt; a rejected or
+        # low-confidence answer stays UNKNOWN (never fabricate).
+        for job, det_result in residues:
+            final = det_result
             try:
-                llm_results = await classify_locations_llm(ai_client, ambiguous)
-                if llm_results:
-                    await db.set_job_location_regions_batch(llm_results)
-                    classified += len(llm_results)
-            except Exception as e:
-                logger.warning(f"LLM location classification failed: {e}")
-                # Mark ambiguous as Unknown (not dismissed)
-                fallback = [(job_id, "Unknown") for job_id, _ in ambiguous]
-                await db.set_job_location_regions_batch(fallback)
-                classified += len(fallback)
-        elif ambiguous:
-            # No AI client — mark as Unknown (conservative, won't be dismissed)
-            fallback = [(job_id, "Unknown") for job_id, _ in ambiguous]
-            await db.set_job_location_regions_batch(fallback)
-            classified += len(fallback)
+                ai_result = await classify_job_ai(job, ai_client,
+                                                  region_of=_region_of)
+                if ai_result.classification_source != SRC_UNKNOWN:
+                    final = ai_result
+            except Exception as exc:  # noqa: BLE001 — never block the pipeline
+                logger.warning("classification: AI fallback error job=%s: %s",
+                               job["id"], exc)
+            decisions.append((job, final))
+            await asyncio.sleep(0)
 
-        total_classified += classified
+        # Rows + metrics over the FINAL decisions (deterministic + AI-resolved)
+        batch_updates = []
+        for job, result in decisions:
+            row = _classification_row(job, result)
+            batch_updates.append(row)
+            m = metrics
+            m["total"] += 1
+            m[result.classification_confidence] = \
+                m.get(result.classification_confidence, 0) + 1
+            if result.remote_type == "REMOTE":
+                m["remote"] += 1
+            elif result.remote_type == "HYBRID":
+                m["hybrid"] += 1
+            elif result.remote_type == "ONSITE":
+                m["onsite"] += 1
+            if result.classification_source == "AI_FALLBACK":
+                m["ai_fallback"] += 1
+            else:
+                m["no_ai_needed"] += 1
+            if row[7]:  # conflict recorded
+                m["conflicts"] += 1
+            logger.info(
+                "[CLASSIFY][job=%s] raw_location=%r country=%s confidence=%s source=%s",
+                job["id"], (job.get("location") or "")[:50],
+                result.country_code or "UNKNOWN",
+                result.classification_confidence, result.classification_source)
+
+        # Write classification results (one batch)
+        if batch_updates:
+            await db.set_job_classifications_batch(batch_updates)
+
+        total_classified += len(decisions)
         await asyncio.sleep(0)
 
-    # Pass 3: dismiss outside allowed regions
+    if total_classified:
+        duration = asyncio.get_event_loop().time() - t0
+        logger.info(
+            "[CLASSIFY] done: %s jobs, %s | avg %.1fms/job | conflicts=%s",
+            total_classified, {k: v for k, v in metrics.items() if v},
+            duration * 1000 / max(1, total_classified), metrics["conflicts"])
+    try:
+        await db.set_classification_metrics({**metrics,
+                                             "duration_s": round(
+                                                 asyncio.get_event_loop().time() - t0, 1)})
+    except Exception:
+        pass  # metrics are best-effort; never block the pipeline
+
+    # Pass 3: dismiss outside allowed regions (pre-existing pass behavior).
+    # "Unknown" is kept (conservative — don't dismiss what we can't classify).
     allowed = await db.get_allowed_regions()
-    # Also keep "Unknown" jobs (conservative — don't dismiss what we can't classify)
     allowed_with_unknown = allowed + ["Unknown"]
     dismissed = await db.dismiss_jobs_outside_regions(allowed_with_unknown)
 

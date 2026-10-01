@@ -54,7 +54,10 @@ step) · CLI over the same service layer · per-user workspaces (M15b).
   │                    title filter → cross-source DEDUP (content hash)
   │                    → freshness (≤7d; DATE_UNKNOWN is terminal)
   ▼
-  2. CLASSIFY ──────── deterministic region rules first, LLM only if ambiguous
+  2. CLASSIFY ──────── app/classification.py deterministic priority chain
+  │                    (structured→text→city→description→ATS→source-hint LOW)
+  │                    + bounded AI fallback for residue only; writes country_code
+  │                    + confidence + source + reason (docs/classify/**)
   ▼
   3. ELIGIBILITY ───── gate chain w/ reason codes (dismissed → freshness →
   │                    evidence → repost-pending) — ZERO LLM on rejects

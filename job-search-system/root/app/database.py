@@ -706,7 +706,24 @@ class Database:
             # reporting. insert_source rows stay the raw source evidence.
             "canonical_source": "ALTER TABLE jobs ADD COLUMN canonical_source TEXT",
             "source_types": "ALTER TABLE jobs ADD COLUMN source_types TEXT",
+            # Stage-2 CLASSIFY upgrade: confidence + evidence + multi-location.
+            # country_code is ISO-2 of CONFIGURED countries (or NULL=unknown);
+            # classification_confidence/source/reason document HOW it was
+            # classified; supported_countries keeps multi-location honesty.
+            "country_code": "ALTER TABLE jobs ADD COLUMN country_code TEXT",
+            "classification_confidence": "ALTER TABLE jobs ADD COLUMN classification_confidence TEXT",
+            "classification_source": "ALTER TABLE jobs ADD COLUMN classification_source TEXT",
+            "classification_reason": "ALTER TABLE jobs ADD COLUMN classification_reason TEXT",
+            "supported_countries": "ALTER TABLE jobs ADD COLUMN supported_countries TEXT",
         }
+
+        # Stage-2 classification metrics blob on search_config (best-effort:
+        # only added when the table exists — fresh DBs create it in CREATE)
+        sc_cursor2 = await self.db.execute("PRAGMA table_info(search_config)")
+        sc_columns2 = {row[1] for row in await sc_cursor2.fetchall()}
+        if sc_columns2 and "classification_metrics" not in sc_columns2:
+            await self.db.execute(
+                "ALTER TABLE search_config ADD COLUMN classification_metrics TEXT")
         for col, sql in jobs_migrations.items():
             if col not in jobs_columns:
                 await self.db.execute(sql)
@@ -1781,7 +1798,7 @@ class Database:
 
     async def get_unclassified_jobs(self, limit=500):
         cursor = await self.db.execute(
-            """SELECT id, location FROM jobs
+            """SELECT id, location, description, country_code FROM jobs
                WHERE location_classified = 0 AND dismissed = 0
                LIMIT ?""", (limit,)
         )
@@ -1793,6 +1810,69 @@ class Database:
             "UPDATE jobs SET location_region = ?, location_classified = 1 WHERE id = ?",
             (region, job_id)
         )
+        await self.db.commit()
+
+    async def set_job_classification(self, job_id: int, region: str,
+                                     country_code: str | None,
+                                     confidence: str, source: str,
+                                     reason: str,
+                                     supported_countries: list | None = None,
+                                     conflict: str | None = None) -> None:
+        """Stage-2 CLASSIFY persistence (task §17).
+
+        Stores the classification VERDICT + its evidence (confidence/source/
+        reason) in ONE update. location_classified=1 marks it done so unchanged
+        jobs are not re-classified every run. `conflict` (when present) is
+        appended to the reason — conflicts are recorded, never silently
+        resolved (task §15).
+        """
+        import json as _json
+        if conflict:
+            reason = f"{reason}; {conflict}"
+        await self.db.execute(
+            """UPDATE jobs SET location_region = ?, location_classified = 1,
+                   country_code = ?, classification_confidence = ?,
+                   classification_source = ?, classification_reason = ?,
+                   supported_countries = ?
+               WHERE id = ?""",
+            (region, country_code, confidence, source,
+             reason[:400],
+             _json.dumps(supported_countries) if supported_countries else None,
+             job_id),
+        )
+
+    async def set_classification_metrics(self, metrics: dict) -> None:
+        """Best-effort Stage-2 metrics sink (task §20) — stored in search_config
+        as a JSON blob so /api/daily-run status can surface classification
+        quality without a new table."""
+        import json as _json
+        # Upsert: a fresh DB has no search_config row yet, so a bare UPDATE
+        # would silently match nothing and metrics would be lost. updated_at is
+        # NOT NULL (no default), so it must be supplied on the INSERT branch.
+        await self.db.execute(
+            """INSERT INTO search_config (id, classification_metrics, updated_at)
+               VALUES (1, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+               classification_metrics = excluded.classification_metrics""",
+            (_json.dumps(metrics), datetime.now(timezone.utc).isoformat()))
+        await self.db.commit()
+
+    async def set_job_classifications_batch(self, updates: list[tuple]) -> None:
+        """Batch form of set_job_classification. Each tuple: (job_id, region,
+        country_code, confidence, source, reason, supported, conflict)."""
+        import json as _json
+        rows = []
+        for (job_id, region, cc, conf, src, reason, supported, conflict) in updates:
+            if conflict:
+                reason = f"{reason}; {conflict}"
+            rows.append((region, cc, conf, src, (reason or "")[:400],
+                         _json.dumps(supported) if supported else None, job_id))
+        await self.db.executemany(
+            """UPDATE jobs SET location_region = ?, location_classified = 1,
+                   country_code = ?, classification_confidence = ?,
+                   classification_source = ?, classification_reason = ?,
+                   supported_countries = ?
+               WHERE id = ?""", rows)
         await self.db.commit()
 
     async def set_job_location_regions_batch(self, updates: list[tuple[int, str]]):
