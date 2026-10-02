@@ -80,9 +80,13 @@ async def research_company(request: Request, company_name: str,
                            website: str = "", force: bool = False):
     """Rich company research, cache-first (30-day TTL)."""
     from app.company_enrichment import COMPANY_CACHE_TTL_DAYS, company_cache_fresh, enrich_company
+    from app.url_safety import is_safe_public_url
     db = _db(request)
     if not company_name.strip():
         raise HTTPException(400, "company name required")
+    # SSRF guard: never let a caller point the server at an internal host.
+    if website and not is_safe_public_url(website):
+        raise HTTPException(422, "website must be a public http(s) URL")
     cached = await db.get_company(company_name)
     if cached and not force and cached.get("researched_at") and company_cache_fresh(cached):
         return {**cached, "cache_hit": True}

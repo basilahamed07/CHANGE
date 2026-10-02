@@ -72,14 +72,18 @@ async def enrich_company(company_name: str, website_hint: str = "") -> dict:
     except Exception as e:
         logger.debug("legacy company research failed for %s: %s", company_name, e)
 
+    from app.url_safety import is_safe_public_url, safe_get
+
     base = website_hint or info["website"] or f"https://{_domain_guess(company_name)}"
-    if base and base.startswith("http"):
+    # SSRF guard: a caller-supplied `website` hint must be a public host, and
+    # redirects are walked hop-by-hop so a public URL cannot 302 us inward.
+    if base and base.startswith("http") and is_safe_public_url(base):
         info["website"] = info["website"] or base
         try:
             headers = {"User-Agent": "Mozilla/5.0 (compatible; jobagent/1.0)"}
             async with httpx.AsyncClient(timeout=12.0, headers=headers,
-                                         follow_redirects=True) as client:
-                resp = await client.get(base)
+                                         follow_redirects=False) as client:
+                resp = await safe_get(client, base, headers=headers)
                 if resp.status_code == 200:
                     text = resp.text
                     links = extract_links(text, company_name)
