@@ -6,8 +6,66 @@ from html import escape
 logger = logging.getLogger(__name__)
 
 
+async def daily_outcome(db) -> dict:
+    """Today's package outcome: what was built against the target (Golden Rule 7).
+
+    The digest is a DAILY REPORT, so it has to lead with the day's result. A run
+    that built nothing must never be emailed as a success (defect G1).
+    """
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    state = {}
+    try:
+        state = await db.get_daily_run_state(today) or {}
+    except Exception:            # pragma: no cover — pre-daily-run DBs
+        logger.debug("no daily run state for %s", today, exc_info=True)
+    target = state.get("daily_target") or 5
+    created = state.get("packages_created")
+    if created is None:
+        try:
+            created = await db.count_packages_created_on(today)
+        except Exception:        # pragma: no cover — defensive
+            created = 0
+    met = (created or 0) >= target
+    reasons = []
+    if not met:
+        reasons = [r for r in (state.get("shortfall_reasons") or [])
+                   if r != "TARGET_REACHED"]
+        if not state:
+            reasons = ["NO_RUN_TODAY"]      # nothing reported: say so, don't guess
+        elif not reasons:
+            reasons = ["NO_ELIGIBLE_JOBS"]  # vocabulary default, never a blank
+    return {
+        "run_date": today,
+        "daily_target": target,
+        "packages_created": created or 0,
+        "target_met": met,
+        "shortfall_reasons": reasons,
+    }
+
+
+def _digest_subject(outcome: dict, job_count: int) -> str:
+    """Lead with the outcome — never with a bare job count."""
+    head = (f"{outcome['packages_created']}/{outcome['daily_target']} packages")
+    if outcome["target_met"]:
+        return f"jobagent: target met — {head} · {job_count} new " \
+               f"match{'es' if job_count != 1 else ''}"
+    reasons = ", ".join(outcome["shortfall_reasons"]) or "unreported"
+    return f"jobagent: {head} — {reasons} · {job_count} new " \
+           f"match{'es' if job_count != 1 else ''}"
+
+
 async def generate_digest(db, min_score: int = 60, hours: int = 24) -> dict:
-    """Generate a digest of new high-scoring jobs from the last N hours."""
+    """Digest of new, ELIGIBLE, high-scoring jobs — led by today's outcome.
+
+    Two defects fixed here:
+
+    * **G4** the query never re-checked eligibility, so a job whose gate had
+      since flipped could still be headlined as a "new match" (the same root
+      cause as S3 in SELECT).
+    * **G1** the digest reported a *job count* and never packages-vs-target or a
+      shortfall reason, so a day that built nothing was emailed as
+      "jobagent: 12 new matches" — a success-shaped message about a failed day.
+    """
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
     cursor = await db.db.execute("""
@@ -15,7 +73,8 @@ async def generate_digest(db, min_score: int = 60, hours: int = 24) -> dict:
         FROM jobs j
         JOIN job_scores js ON j.id = js.job_id
         WHERE js.match_score >= ? AND j.created_at >= ? AND j.dismissed = 0
-        ORDER BY js.match_score DESC
+          AND j.eligibility_status = 'ELIGIBLE'
+        ORDER BY js.match_score DESC, j.id ASC
         LIMIT 20
     """, (min_score, cutoff))
     rows = await cursor.fetchall()
@@ -26,10 +85,17 @@ async def generate_digest(db, min_score: int = 60, hours: int = 24) -> dict:
             d["match_reasons"] = json.loads(d["match_reasons"])
         jobs.append(d)
 
-    subject = f"jobagent: {len(jobs)} new match{'es' if len(jobs) != 1 else ''}"
+    outcome = await daily_outcome(db)
+    subject = _digest_subject(outcome, len(jobs))
 
-    plain = f"jobagent Daily Digest\n"
-    plain += f"{len(jobs)} new job match{'es' if len(jobs) != 1 else ''} in the last {hours} hours\n\n"
+    plain = "jobagent Daily Digest\n"
+    plain += (f"Run {outcome['run_date']}: {outcome['packages_created']}/"
+              f"{outcome['daily_target']} packages built — "
+              f"{'TARGET MET' if outcome['target_met'] else 'TARGET MISSED'}\n")
+    if not outcome["target_met"]:
+        plain += f"Shortfall: {', '.join(outcome['shortfall_reasons'])}\n"
+    plain += f"\n{len(jobs)} new job match{'es' if len(jobs) != 1 else ''} " \
+             f"in the last {hours} hours\n\n"
 
     for j in jobs:
         score = j.get("match_score", "?")
@@ -43,13 +109,14 @@ async def generate_digest(db, min_score: int = 60, hours: int = 24) -> dict:
             plain += f"  Salary: ${sal_min:,} - ${sal_max:,}\n"
         plain += f"  {j['url']}\n\n"
 
-    html = _render_html_digest(jobs, hours)
+    html = _render_html_digest(jobs, hours, outcome)
 
     return {
         "subject": subject,
         "body": plain,
         "html": html,
         "job_count": len(jobs),
+        "outcome": outcome,
         "jobs": [{
             "id": j["id"],
             "title": j["title"],
@@ -61,7 +128,8 @@ async def generate_digest(db, min_score: int = 60, hours: int = 24) -> dict:
     }
 
 
-def _render_html_digest(jobs: list[dict], hours: int) -> str:
+def _render_html_digest(jobs: list[dict], hours: int,
+                         outcome: dict | None = None) -> str:
     count = len(jobs)
     rows = ""
     for j in jobs:
@@ -89,11 +157,27 @@ def _render_html_digest(jobs: list[dict], hours: int) -> str:
           </td>
         </tr>"""
 
+    banner = ""
+    if outcome:
+        met = bool(outcome.get("target_met"))
+        color = "#16a34a" if met else "#dc2626"
+        status = "TARGET MET" if met else "TARGET MISSED"
+        reasons = "" if met else " — " + escape(
+            ", ".join(outcome.get("shortfall_reasons") or []))
+        banner = (
+            f'<div style="background:{color};color:#fff;padding:10px 14px;'
+            f'border-radius:6px;font-weight:600;margin:10px 0 6px">'
+            f'{escape(str(outcome.get("run_date", "")))}: '
+            f'{outcome.get("packages_created", 0)}/{outcome.get("daily_target", 5)} '
+            f'packages built — {status}{reasons}</div>'
+        )
+
     return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1f2937">
   <h2 style="color:#2563eb;margin-bottom:4px">jobagent Digest</h2>
+  {banner}
   <p style="color:#6b7280;margin-top:0">{count} new match{'es' if count != 1 else ''} in the last {hours} hours</p>
   <table style="width:100%;border-collapse:collapse">
     <thead>

@@ -50,6 +50,7 @@ SHORTFALL_REASONS = {
     "EVIDENCE_GATE": "packages refused by the evidence checker",
     "PACKAGE_ERROR": "package generation failed",
     "RUN_INTERRUPTED": "previous run crashed mid-stage (recovered)",
+    "NO_RUN_TODAY": "today's daily run has not executed yet",
     "TARGET_REACHED": "daily target met",
 }
 
