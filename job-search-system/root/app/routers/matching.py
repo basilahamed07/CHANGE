@@ -15,12 +15,34 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/matching")
 
 
+async def _hybrid_state(request: Request):
+    """Per-request state for the hybrid engine.
+
+    `build_hybrid_matcher_async` reads **attributes** (`evidence_store`,
+    `country_registry`, `embedding_client`), so a stub carrying only `.matcher`
+    gives it an empty profile — defect **H2**: `/score-all` then scored every job
+    with skills=50 / semantic=50 because there were no verified skills, no corpus
+    and no visa keywords.
+
+    The evidence store must be the REQUESTING user's (a skill is verified in one
+    user's corpus, not another's); the country registry and embedding client are
+    shared app-level config.
+    """
+    ai = await request.app.state.ai_state_for(request)
+    state = type("_HybridState", (), {})()
+    state.evidence_store = ai.get("evidence_store")
+    state.matcher = ai.get("matcher")
+    state.country_registry = getattr(request.app.state, "country_registry", None)
+    state.embedding_client = getattr(request.app.state, "embedding_client", None)
+    return state
+
+
 @router.get("/status")
 async def matching_status(request: Request):
     """Engine status: profile sizes, weights, provider, preferences."""
     from app.matching_service import build_hybrid_matcher_async
     db = _db(request)
-    matcher, meta = await build_hybrid_matcher_async(request.app.state, db)
+    matcher, meta = await build_hybrid_matcher_async(await _hybrid_state(request), db)
     prefs = await db.get_hybrid_prefs()
     scored_rows = await db.db.execute(
         """SELECT COUNT(*) FROM job_scores WHERE component_scores IS NOT NULL""")
@@ -65,10 +87,7 @@ async def score_all(request: Request):
     Free + fast (no AI). Safe to run any time; skips already-scored jobs.
     """
     from app.matching_service import score_all_unscored
-    ai = await request.app.state.ai_state_for(request)
-    fake_state = type("_PerUserAIState", (), {})()
-    fake_state.matcher = ai["matcher"]
-    result = await score_all_unscored(fake_state, _db(request))
+    result = await score_all_unscored(await _hybrid_state(request), _db(request))
     return result
 
 
