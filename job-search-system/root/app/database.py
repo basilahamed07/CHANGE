@@ -3819,15 +3819,26 @@ class Database:
         return row[0] if row else 0
 
     async def get_top_unpackaged_jobs(self, cutoff: int = 60, limit: int = 10) -> list[dict]:
-        """Eligible, scored-above-cutoff jobs with no package yet — best first."""
+        """Eligible, scored-above-cutoff jobs with no package yet — best first.
+
+        Stage-6 contract:
+        - **S3 — selection re-checks eligibility.** A score row outlives an
+          eligibility flip (nothing prunes `job_scores` when a job goes stale or
+          leaves the target region), so filtering on `dismissed` alone would
+          package a job the gate has since rejected. Unknown/un-evaluated jobs
+          are excluded too: only an explicit `ELIGIBLE` is good enough.
+        - **S2 — deterministic.** Ties break on `job_id`, so two runs over
+          unchanged data select the same set.
+        """
         cursor = await self.db.execute(
             """SELECT js.job_id, js.match_score FROM job_scores js
                INNER JOIN jobs j ON j.id = js.job_id
                LEFT JOIN applications a ON a.job_id = js.job_id
                WHERE j.dismissed = 0 AND j.strategy_dismissed = 0
+               AND j.eligibility_status = 'ELIGIBLE'
                AND js.match_score >= ?
                AND (a.package_dir IS NULL OR a.package_dir = '')
-               ORDER BY js.match_score DESC LIMIT ?""",
+               ORDER BY js.match_score DESC, js.job_id ASC LIMIT ?""",
             (cutoff, limit))
         return [dict(r) for r in await cursor.fetchall()]
 

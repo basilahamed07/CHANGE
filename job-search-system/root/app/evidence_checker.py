@@ -13,6 +13,13 @@ Rules enforced on generated text:
                             verified corpus is below the floor
   3. unsupported_skill    — a candidate-known skill present in the output but
                             absent from VERIFIED evidence (Critical Test #1)
+  4. personal_fact_mismatch — the output asserts a personal circumstance
+                            (relocation target, visa sponsorship stance,
+                            willingness to relocate) that CONTRADICTS the
+                            candidate's verified evidence. Proven live in run
+                            2026-09-24_125119: Singapore -> Amsterdam and
+                            `sponsorship welcomed` -> `required`, straight
+                            through the other three rules.
 """
 
 import logging
@@ -37,6 +44,84 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     if not a or not b:
         return 0.0
     return len(a & b) / len(a | b)
+
+
+# --- personal-fact extraction (Stage-8 D2 / NEXT_5_PLAN N4) ------------------
+#
+# These describe the CANDIDATE, so they may only come from the candidate's own
+# evidence — never from the job description. The three rules above cannot see
+# them: "Amsterdam" and "welcomed" carry no digits, they are not skills, and a
+# rewritten relocation line differs from its verified original by a single
+# token — far above the similarity floor. That is exactly how run
+# `2026-09-24_125119` shipped Singapore -> Amsterdam and
+# `sponsorship welcomed` -> `sponsorship required`.
+
+# A place name; stops at the separators used in a resume header line
+# (` | `), parenthesis, brackets, quotes and newlines.
+_PLACE_RE = re.compile(r"([A-Za-z][A-Za-z.,\- ]{0,40})")
+_RELOCATION_RE = re.compile(
+    r"relocat(?:e|es|ed|ing|ion)|moving\s+to", re.IGNORECASE)
+_SPONSORSHIP_RE = re.compile(r"\bsponsorship\b", re.IGNORECASE)
+_NEG_RELOCATION_RE = re.compile(
+    r"(?:not\s+(?:open|willing)|unwilling|no\s+relocation|unable\s+to\s+relocat)",
+    re.IGNORECASE)
+_STANCE_NOT_REQUIRED = re.compile(
+    r"\bnot\s+(?:require[sd]?|need(?:ed)?|necessary)\b|\bno\s+sponsorship\b",
+    re.IGNORECASE)
+_STANCE_REQUIRED = re.compile(
+    r"\brequire[sd]?\b|\bneeds?\b|\bessential\b", re.IGNORECASE)
+_STANCE_WELCOMED = re.compile(
+    r"\bwelcome[ds]?\b|\bpreferred\b|\boptional\b", re.IGNORECASE)
+
+
+def _segments(text: str) -> list[str]:
+    """Sentence-ish chunks that never cross a `|` (resume header separators)."""
+    out: list[str] = []
+    for line in (text or "").splitlines():
+        for part in re.split(r"[|;\n]", line):
+            if part.strip():
+                out.append(part.strip())
+    return out
+
+
+def relocation_targets(text: str) -> set[str]:
+    """Place names asserted as a relocation destination."""
+    targets: set[str] = set()
+    for seg in _segments(text):
+        for m in _RELOCATION_RE.finditer(seg):
+            tail = seg[m.end():]
+            tail = re.sub(r"^\s*(?:to|:|from)\s*", "", tail, flags=re.I)
+            place = _PLACE_RE.match(tail)
+            if not place:
+                continue
+            name = place.group(1).strip(" .,-")
+            if name:
+                targets.add(name)
+    return targets
+
+
+def sponsorship_stances(text: str) -> set[str]:
+    """Visa-sponsorship stances asserted: required / welcomed / not_required."""
+    stances: set[str] = set()
+    for seg in _segments(text):
+        if not _SPONSORSHIP_RE.search(seg):
+            continue
+        if _STANCE_NOT_REQUIRED.search(seg):
+            stances.add("not_required")
+        elif _STANCE_REQUIRED.search(seg):
+            stances.add("required")
+        elif _STANCE_WELCOMED.search(seg):
+            stances.add("welcomed")
+    return stances
+
+
+def relocation_willingness(text: str) -> str | None:
+    """'open' or 'closed', or None when the text says nothing about it."""
+    for seg in _segments(text):
+        if not _RELOCATION_RE.search(seg):
+            continue
+        return "closed" if _NEG_RELOCATION_RE.search(seg) else "open"
+    return None
 
 
 def extract_numbers(text: str) -> set[str]:
@@ -85,6 +170,9 @@ class EvidenceChecker:
         self.verified_values = list(verified_values)
         self.similarity_floor = similarity_floor
         self.min_line_length = min_line_length
+        # Flattened evidence, used by the personal-fact rules to compare the
+        # output's claims against what the candidate actually said.
+        self._corpus_text = "\n".join(self.verified_values)
         self._corpus_token_sets = [_token_set(v) for v in self.verified_values]
         self._verified_numbers: set[str] = set()
         for v in self.verified_values:
@@ -170,6 +258,53 @@ class EvidenceChecker:
             })
 
     # ------------------------------------------------------------------ gate
+    def _check_personal_facts(
+        self,
+        generated_text: str,
+        failures: list[dict],
+        warnings: list[dict],
+    ) -> None:
+        """Personal circumstances must agree with the candidate's evidence.
+
+        Deliberately **symmetric about the evidence**:
+
+        - evidence says X, output says Y  -> **failure** (a proven contradiction)
+        - evidence says nothing, output asserts something -> **warning** (we
+          cannot disprove it, and failing would turn this gate into a wall that
+          rejects honest resumes because a phrase was parsed differently)
+        - evidence says X, output omits it -> fine (omission is never fabrication)
+        """
+        ref = self._corpus_text
+        checks = (
+            ("relocation target", relocation_targets(generated_text),
+             relocation_targets(ref)),
+            ("visa sponsorship stance", sponsorship_stances(generated_text),
+             sponsorship_stances(ref)),
+            ("relocation willingness",
+             {relocation_willingness(generated_text)} - {None},
+             {relocation_willingness(ref)} - {None}),
+        )
+        for label, claimed, evidence in checks:
+            if not claimed:
+                continue          # output says nothing — omission is safe
+            if not evidence:
+                warnings.append({
+                    "type": "unsupported_personal_fact",
+                    "items": sorted(claimed),
+                    "detail": (f"Output asserts a {label} the candidate's "
+                               "evidence never states — confirm before shipping"),
+                })
+                continue
+            contradicted = claimed - evidence
+            if contradicted:
+                failures.append({
+                    "type": "personal_fact_mismatch",
+                    "items": sorted(contradicted),
+                    "detail": (f"Output says {label}={sorted(contradicted)} but "
+                               f"verified evidence says {sorted(evidence)}. "
+                               "Personal facts come from evidence, never the JD."),
+                })
+
     def check(
         self,
         generated_text: str,
@@ -183,6 +318,7 @@ class EvidenceChecker:
         self._check_thin_lines(generated_text, warnings)
         if candidate_skill_values:
             self._check_skills(generated_text, candidate_skill_values, failures)
+        self._check_personal_facts(generated_text, failures, warnings)
 
         result = EvidenceCheckResult(
             ok=not failures,
