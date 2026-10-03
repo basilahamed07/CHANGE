@@ -89,7 +89,7 @@ async function renderTabDiscovery(content) {
         [countries, adapters, health, discoveryStatus] = await Promise.all([
             api.request('GET', '/api/countries'),
             api.request('GET', '/api/discovery/adapters').catch(() => ({ adapters: [] })),
-            api.request('GET', '/api/discovery/health').catch(() => null),
+            Promise.resolve(null),
             api.request('GET', '/api/discovery/status').catch(() => null),
         ]);
     } catch (err) {
@@ -135,7 +135,7 @@ async function renderTabDiscovery(content) {
                 const h = healthMap[a.source_name || a.name];
                 return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg-surface-secondary);border-radius:var(--radius-sm);font-size:0.875rem">
                     <div><strong>${escapeHtml(a.source_name || a.name)}</strong> <span style="font-size:0.75rem;color:var(--text-tertiary)">${escapeHtml(a.kind || a.type || '')}</span></div>
-                    <span style="font-size:0.75rem">${h === undefined ? '<span style="color:var(--text-tertiary)">not probed</span>' : (h === true || h === 'ok' || h === 'healthy' ? '<span style="color:#22c55e">healthy</span>' : '<span style="color:#ef4444">unhealthy</span>')}</span>
+                    <span class="adapter-health" data-source="${escapeHtml(a.source_name || a.name)}" style="font-size:0.75rem">${h === undefined ? '<span style="color:var(--text-tertiary)">not probed</span>' : (h === true || h === 'ok' || h === 'healthy' ? '<span style="color:#22c55e">healthy</span>' : '<span style="color:#ef4444">unhealthy</span>')}</span>
                 </div>`;
             }).join('')}
         </div>
@@ -184,9 +184,23 @@ async function renderTabDiscovery(content) {
     document.getElementById('probe-health-btn').addEventListener('click', async () => {
         const btn = document.getElementById('probe-health-btn');
         btn.disabled = true;
-        try { await renderTabDiscovery(content); showToast('Health probed', 'success'); }
+        btn.innerHTML = '<span class="spinner"></span> Probing...';
+        try {
+            const probed = await api.request('GET', '/api/discovery/health');
+            const map = {};
+            try { (probed.sources || probed || []).forEach(s => { if (s.source) map[s.source] = s.status || s.healthy; }); } catch { /* shape varies */ }
+            content.querySelectorAll('.adapter-health').forEach(el => {
+                const h = map[el.dataset.source];
+                el.innerHTML = h === undefined
+                    ? '<span style="color:var(--text-tertiary)">not probed</span>'
+                    : (h === true || h === 'ok' || h === 'healthy'
+                        ? '<span style="color:#22c55e">healthy</span>'
+                        : '<span style="color:#ef4444">unhealthy</span>');
+            });
+            showToast('Health probed', 'success');
+        }
         catch (err) { showToast(err.message, 'error'); }
-        finally { btn.disabled = false; }
+        finally { btn.disabled = false; btn.textContent = 'Probe Health'; }
     });
 }
 
