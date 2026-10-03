@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-10-02T20:00:28+00:00",
+  "source_db": "jobagent.db",
+  "gates": {
+    "classified": 42,
+    "evaluated": 1244
+  },
+  "analysis": {
+    "stage3_leaked_scores": 0,
+    "stage4_input_pool": 26,
+    "eligible_total": 26,
+    "already_scored": 0,
+    "d1_fabricated_zero_total": 0,
+    "d1_samples": [],
+    "transient_zero_total": 0,
+    "role_match_false": 0,
+    "role_match_false_over_cap": 0,
+    "score_buckets": {},
+    "score_min": null,
+    "score_max": null,
+    "score_mean": null
+  },
+  "live_score": {
+    "requested": 3,
+    "scored": 3,
+    "skipped": 0,
+    "skipped_ids": [],
+    "scores": [
+      {
+        "job_id": 259,
+        "score": 35,
+        "role_match": false
+      },
+      {
+        "job_id": 260,
+        "score": 63,
+        "role_match": true
+      },
+      {
+        "job_id": 295,
+        "score": 72,
+        "role_match": true
+      }
+    ],
+    "ai_calls": 1,
+    "note": "every job accounted for \u2014 nothing was fabricated"
+  },
+  "duration_s": 30.9
+}

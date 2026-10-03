@@ -220,25 +220,136 @@ async def test_package_refresh_endpoint_idempotent(tmp_path):
     await db.close()
 
 
-@pytest.mark.asyncio
-async def test_package_refresh_requires_stored_text(tmp_path):
+# ---------------- P0: a plain build must never rewrite the reviewed text ------
+#
+# Defect (Stage-8 D1): POST /build defaulted to the AI branch, so a normal
+# "build" silently regenerated and overwrote the text a human had reviewed. The
+# flag that preserved reviewed work (`refresh=true`) was opt-in and read
+# backwards. Contract now: default = package the stored text unchanged;
+# regeneration requires an explicit `regenerate=true`.
+
+async def _seed_package_app(tmp_path, tailored="Basil resume text.",
+                            cover="Dear team,", extra_verified=None):
+    """App + DB with a real evidence store/checker and stored reviewed text."""
     from app.main import create_app
     from app.database import Database
-    from httpx import ASGITransport, AsyncClient
+    import yaml as _yaml
+    from app.evidence_store import EvidenceStore
+    from app.evidence_checker import EvidenceChecker
 
     db_path = str(tmp_path / "t.db")
     application = create_app(db_path=db_path, testing=True)
     db = Database(db_path)
     await db.init()
     application.state.db = db
+
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+    claims = [{"id": "e1", "value": tailored, "status": "VERIFIED", "source": "test"}]
+    if cover:
+        claims.append({"id": "e2", "value": cover, "status": "VERIFIED", "source": "test"})
+    for i, extra in enumerate(extra_verified or []):
+        claims.append({"id": f"x{i}", "value": extra, "status": "VERIFIED", "source": "test"})
+    (profile_dir / "experience.yaml").write_text(_yaml.safe_dump({"claims": claims}))
+    store = EvidenceStore(profile_dir=str(profile_dir))
+    application.state.evidence_store = store
+    application.state.evidence_checker = EvidenceChecker(store.verified_values())
+
     jid = await db.insert_job(
         title="AI Engineer", company="Acme AI", location="Remote",
-        salary_min=None, salary_max=None, description="d", url="https://x/2",
-        posted_date="2026-09-20", application_method="direct", contact_email=None)
+        salary_min=None, salary_max=None, description="Build LLM products.",
+        url="https://x/p0", posted_date="2026-09-20",
+        application_method="direct", contact_email=None)
+    app_id = await db.insert_application(jid, "prepared")
+    await db.update_application(app_id, tailored_resume=tailored, cover_letter=cover)
+    return application, db, jid
+
+
+class _FakeTailor:
+    """Minimal Tailor stand-in: returns fixed text, counts calls."""
+
+    def __init__(self, text, cover="Dear team,"):
+        self.text = text
+        self.cover = cover
+        self.calls = 0
+
+    async def prepare(self, job_description, match_reasons, suggested_keywords):
+        self.calls += 1
+        return {"tailored_resume": self.text, "cover_letter": self.cover}
+
+
+@pytest.mark.asyncio
+async def test_default_build_packages_stored_text_without_ai(tmp_path):
+    """P0 regression: POST /build (no params) must NOT regenerate or rewrite."""
+    from httpx import ASGITransport, AsyncClient
+
+    application, db, jid = await _seed_package_app(tmp_path)
+    application.state.tailor = None   # no AI configured at all
+
     transport = ASGITransport(app=application)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
-        # No tailored text and no AI tailor configured -> 503 (honest failure)
-        r = await client.post(f"/api/packages/jobs/{jid}/build?refresh=true")
+        r = await client.post(f"/api/packages/jobs/{jid}/build")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["metadata"]["generated_by"] == "stored"
+        assert body["metadata"]["evidence_check"]["ok"] is True
+
+    row = await db.get_application(jid)
+    assert row["tailored_resume"] == "Basil resume text."   # untouched
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_default_build_refuses_when_no_reviewed_text(tmp_path):
+    """No reviewed text => honest 409, never a silent AI run."""
+    from httpx import ASGITransport, AsyncClient
+
+    application, db, jid = await _seed_package_app(tmp_path)
+    app_row = await db.get_application(jid)
+    await db.update_application(app_row["id"], tailored_resume="", cover_letter="")
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        r = await client.post(f"/api/packages/jobs/{jid}/build")
+        assert r.status_code == 409
+        assert r.json()["detail"]["error"] == "no_reviewed_text"
+        # the legacy refresh alias behaves identically
+        r2 = await client.post(f"/api/packages/jobs/{jid}/build?refresh=true")
+        assert r2.status_code == 409
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_regenerate_true_overwrites_and_records_provenance(tmp_path):
+    """Only an explicit regenerate=true rewrites text — and metadata says so."""
+    from httpx import ASGITransport, AsyncClient
+
+    regenerated = "Basil resume text. Updated by AI."
+    application, db, jid = await _seed_package_app(tmp_path, extra_verified=[regenerated])
+    fake = _FakeTailor(regenerated)
+    application.state.tailor = fake
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        r = await client.post(f"/api/packages/jobs/{jid}/build?regenerate=true")
+        assert r.status_code == 200
+        assert r.json()["metadata"]["generated_by"] == "regenerated"
+
+    assert fake.calls == 1
+    row = await db.get_application(jid)
+    assert row["tailored_resume"] == regenerated
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_regenerate_without_a_tailor_is_an_honest_503(tmp_path):
+    from httpx import ASGITransport, AsyncClient
+
+    application, db, jid = await _seed_package_app(tmp_path)
+    application.state.tailor = None
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        r = await client.post(f"/api/packages/jobs/{jid}/build?regenerate=true")
         assert r.status_code == 503
     await db.close()
 

@@ -506,7 +506,6 @@ function renderJobDetailContent(container, job, profile = {}, companyInfo = null
             try {
                 const result = await api.draftEmail(job.id);
                 document.getElementById('email-container').innerHTML = renderEmailPreview(result.email);
-                wireSendEmailBtn(job.id);
                 showToast('Email drafted', 'success');
             } catch (err) {
                 showToast(err.message, 'error');
@@ -516,8 +515,6 @@ function renderJobDetailContent(container, job, profile = {}, companyInfo = null
             }
         });
     }
-
-    wireSendEmailBtn(job.id);
 
     const genCoverLetterBtn = document.getElementById('generate-cover-letter-btn');
     if (genCoverLetterBtn) {
@@ -834,7 +831,7 @@ function wirePipelineActions(job, container, resumes) {
                         <a class="btn btn-secondary btn-sm" href="/api/packages/jobs/${job.id}/download/resume.docx" style="margin-top:4px">Download resume.docx</a>`
                         : '<div style="color:var(--text-tertiary)">No package built</div>'}
                     <div style="display:flex;gap:6px;margin-top:4px">
-                        <button class="btn btn-primary btn-sm" id="build-package-btn">Build Package (AI)</button>
+                        <button class="btn btn-primary btn-sm" id="build-package-btn" title="Re-runs AI tailoring and overwrites the stored reviewed text">Build Package (AI)</button>
                         <button class="btn btn-secondary btn-sm" id="repackage-btn" title="Zero AI cost — repackages stored text">Repackage (free)</button>
                     </div>
                 </div>
@@ -870,9 +867,11 @@ function wirePipelineActions(job, container, resumes) {
         });
         wireBtn('build-package-btn', async () => {
             if (!await requireAI()) return;
-            const r = await api.request('POST', `/api/packages/jobs/${job.id}/build`, {});
+            // regenerate=true is explicit: this is the ONLY button that rewrites
+            // the reviewed text. "Repackage (free)" packages it unchanged.
+            const r = await api.request('POST', `/api/packages/jobs/${job.id}/build?regenerate=true`, {});
             await loadPanelData();
-            result(`Package ${r.status || 'built'} → ${escapeHtml(String(r.package_dir || 'data/applications/'))}`);
+            result(`Package regenerated (AI) → ${escapeHtml(String(r.package_dir || 'data/applications/'))}`);
         });
         wireBtn('repackage-btn', async () => {
             const r = await api.request('POST', `/api/packages/jobs/${job.id}/build?refresh=true`, {});
@@ -1327,24 +1326,6 @@ function attachCoverLetterListeners(jobId) {
     }
 }
 
-function wireSendEmailBtn(jobId) {
-    const sendBtn = document.getElementById('send-email-btn');
-    if (!sendBtn) return;
-    sendBtn.addEventListener('click', async () => {
-        sendBtn.disabled = true;
-        sendBtn.innerHTML = '<span class="spinner"></span> Sending...';
-        try {
-            await api.request('POST', `/api/jobs/${jobId}/send-email`);
-            showToast('Email sent', 'success');
-            sendBtn.textContent = 'Sent!';
-        } catch (err) {
-            showToast(err.message, 'error');
-            sendBtn.disabled = false;
-            sendBtn.textContent = 'Send Email';
-        }
-    });
-}
-
 function renderEmailPreview(email) {
     if (!email) return '';
     return `
@@ -1356,7 +1337,6 @@ function renderEmailPreview(email) {
                 <div class="email-body">${escapeHtml(email.body || '')}</div>
             </div>
             <div class="prepared-actions">
-                <button class="btn btn-primary btn-sm" id="send-email-btn">Send Email</button>
                 <button class="btn btn-secondary btn-sm" onclick="copyToClipboard(document.querySelector('.email-body')?.textContent || '')">Copy Email</button>
             </div>
         </div>

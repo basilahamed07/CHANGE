@@ -102,15 +102,16 @@ async def run_discovery(request: Request,
     registry = getattr(app.state, "country_registry", None)
     if not registry or not registry.enabled_countries():
         raise HTTPException(503, "No countries enabled — configure /api/countries first")
-    if getattr(app.state, "discovery_running", False):
-        return {"status": "already_running",
-                "progress": getattr(app.state, "discovery_progress", {})}
-
     from app.adapters import ALL_ADAPTERS
     from app.discovery import run_discovery_cycle
+    from app.run_state import run_slot
 
-    app.state.discovery_running = True
-    app.state.discovery_progress = {"completed_passes": 0, "new_jobs": 0}
+    slot = run_slot(request)
+    if slot["discovery_running"]:
+        return {"status": "already_running", "progress": slot["discovery_progress"]}
+
+    slot["discovery_running"] = True
+    slot["discovery_progress"] = {"completed_passes": 0, "new_jobs": 0}
     ws = getattr(request.state, "workspace", None)
     bg_db = ws.db if ws else (getattr(app.state, "bg_db", None) or app.state.db)
 
@@ -121,15 +122,15 @@ async def run_discovery(request: Request,
                 keys.setdefault(name, entry)
             telemetry = await run_discovery_cycle(
                 bg_db, registry, ALL_ADAPTERS,
-                progress=app.state.discovery_progress,
+                progress=slot["discovery_progress"],
                 max_passes=passes,
                 scraper_keys=keys)
-            app.state.discovery_telemetry = telemetry
+            slot["discovery_telemetry"] = telemetry
         except Exception:
             logger.exception("Discovery cycle crashed")
-            app.state.discovery_telemetry = {"error": "crashed — see server log"}
+            slot["discovery_telemetry"] = {"error": "crashed — see server log"}
         finally:
-            app.state.discovery_running = False
+            slot["discovery_running"] = False
 
     asyncio.create_task(_run())
     return {"status": "discovery_started", "passes": passes,
@@ -138,8 +139,10 @@ async def run_discovery(request: Request,
 
 @router.get("/discovery/status")
 async def discovery_status(request: Request):
+    from app.run_state import run_slot
+    slot = run_slot(request)
     return {
-        "running": getattr(request.app.state, "discovery_running", False),
-        "progress": getattr(request.app.state, "discovery_progress", {}),
-        "last_telemetry": getattr(request.app.state, "discovery_telemetry", None),
+        "running": slot["discovery_running"],
+        "progress": slot["discovery_progress"],
+        "last_telemetry": slot["discovery_telemetry"],
     }

@@ -9,10 +9,13 @@ answers: *what actually happens when two people are signed in at the same time?*
 One test per item in `docs/NEXT_5_PLAN.md`.
 
     N1  test_gmail_token_is_per_user        — two tokens, two mailboxes, masked
+    N3  test_two_users_runs_are_isolated    — concurrent runs, no cross-user leak
+    N2  test_scheduler_runs_per_user        — scheduled tick reaches every user
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -249,3 +252,198 @@ async def test_outreach_still_works_without_any_gmail_token(two_users, monkeypat
 
     cfg = (await admin.get("/api/outreach/config")).json()
     assert cfg["gmail_connected"] is False
+
+
+# --------------------------------------------------------------------- N3
+
+
+async def _seed_resume(client) -> None:
+    """Give this user a usable resume so the no-resume gate (428) lets them search."""
+    r = await client.post(
+        "/api/resume/upload",
+        files={"file": ("candidate.txt",
+                        b"AI Engineer\nPython, LLM, RAG, FastAPI", "text/plain")})
+    assert r.status_code == 200, r.text
+
+
+async def _wait_until(predicate, timeout=5.0, interval=0.01) -> bool:
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        if predicate():
+            return True
+        await asyncio.sleep(interval)
+    return False
+
+
+@pytest.mark.asyncio
+async def test_two_users_runs_are_isolated(two_users, monkeypatch):
+    """N3: one user's run must never block or leak into another's.
+
+    Before the run-state registry, discovery/scrape progress lived in single
+    process-global slots: B's "start" returned already_running (or 409), and B's
+    progress bar showed A's numbers. Now every run is keyed by user id.
+    """
+    import app.discovery as discovery_mod
+    import app.main as main_mod
+    import app.routers.scraping as scraping_mod
+
+    # No AI anywhere: resume upload takes its reduced-analysis path, no network.
+    monkeypatch.setattr(main_mod, "_build_ai_client",
+                        lambda *a, **k: None)
+
+    admin, alice = two_users
+    await _seed_resume(admin)
+    await _seed_resume(alice)
+
+    gate = asyncio.Event()
+    entered: list = []
+
+    async def _blocking_discovery(db, registry, adapters, progress=None,
+                                  max_passes=None, scraper_keys=None):
+        entered.append(progress)
+        await gate.wait()
+        return {"done": True}
+
+    async def _blocking_scrape(*args, **kwargs):
+        await gate.wait()
+
+    async def _noop(*args, **kwargs):
+        return 0
+
+    monkeypatch.setattr(discovery_mod, "run_discovery_cycle", _blocking_discovery)
+    monkeypatch.setattr(scraping_mod, "run_scrape_cycle", _blocking_scrape)
+    monkeypatch.setattr(scraping_mod, "run_enrichment_cycle", _noop)
+    monkeypatch.setattr(scraping_mod, "run_location_classification", _noop)
+
+    try:
+        # --- discovery: BOTH can run at once, over separate progress dicts ---
+        r1 = await admin.post("/api/discovery/run?passes=1")
+        r2 = await alice.post("/api/discovery/run?passes=1")
+        assert r1.status_code == 200, r1.text
+        assert r2.status_code == 200, r2.text
+        assert r1.json()["status"] == "discovery_started"
+        # The whole point: B is NOT told "already_running".
+        assert r2.json()["status"] == "discovery_started"
+
+        assert await _wait_until(lambda: len(entered) == 2), \
+            "both discovery cycles should have entered"
+        # ...and each got its OWN progress dict, not a shared global.
+        assert entered[0] is not entered[1]
+
+        a_status = (await admin.get("/api/discovery/status")).json()
+        b_status = (await alice.get("/api/discovery/status")).json()
+        assert a_status["running"] is True
+        assert b_status["running"] is True
+
+        # --- scrape: A running must not make B see A's progress or a 409 ----
+        a_scrape = await admin.post("/api/scrape")
+        assert a_scrape.status_code == 202, a_scrape.text
+        await asyncio.sleep(0.05)
+
+        a_prog = (await admin.get("/api/scrape/progress")).json()
+        b_prog = (await alice.get("/api/scrape/progress")).json()
+        assert a_prog["active"] is True
+        assert b_prog["active"] is False        # B does not see A's run
+
+        b_scrape = await alice.post("/api/scrape")
+        assert b_scrape.status_code == 202, b_scrape.text   # not 409
+    finally:
+        gate.set()
+        await asyncio.sleep(0.1)
+
+
+@pytest.mark.asyncio
+async def test_scrape_per_ip_cap_returns_429(two_users, monkeypatch):
+    """N3: the per-IP advisory cap answers 429, not a silent no-op."""
+    import app.main as main_mod
+    import app.routers.scraping as scraping_mod
+
+    monkeypatch.setattr(main_mod, "_build_ai_client", lambda *a, **k: None)
+    monkeypatch.setattr(scraping_mod, "MAX_CONCURRENT_SCRAPES_PER_IP", 1)
+
+    admin, alice = two_users
+    await _seed_resume(admin)
+    await _seed_resume(alice)
+
+    gate = asyncio.Event()
+
+    async def _blocking(*args, **kwargs):
+        await gate.wait()
+
+    async def _noop(*args, **kwargs):
+        return 0
+
+    monkeypatch.setattr(scraping_mod, "run_scrape_cycle", _blocking)
+    monkeypatch.setattr(scraping_mod, "run_enrichment_cycle", _noop)
+    monkeypatch.setattr(scraping_mod, "run_location_classification", _noop)
+
+    try:
+        first = await admin.post("/api/scrape")
+        assert first.status_code == 202, first.text
+        await asyncio.sleep(0.05)
+
+        second = await alice.post("/api/scrape")
+        assert second.status_code == 429, second.text
+        assert second.json()["error"] == "too_many_concurrent_scrapes"
+    finally:
+        gate.set()
+        await asyncio.sleep(0.1)
+
+
+# --------------------------------------------------------------------- N2
+
+
+@pytest.mark.asyncio
+async def test_scheduler_runs_per_user(app, two_users, monkeypatch):
+    """N2: one scheduled tick must reach EVERY active user's workspace.
+
+    Before N2 every APScheduler job ran against `app.state.bg_db` — the ADMIN's
+    workspace — so a second user's pool never got background discovery, scoring
+    or refresh at all. Disabled users must be skipped.
+
+    `Database.get_scraper_keys` is the last thing each per-user scrape does
+    before building scrapers; patching it records WHICH workspace DB the cycle
+    was pointed at, then aborts that user's run before any network call.
+    """
+    from app.database import Database
+
+    admin, alice = two_users
+    admin_job = await _save_job(admin, "sched-admin")
+    await _save_job(alice, "sched-alice")
+
+    # A third, DISABLED user must be skipped entirely.
+    r = await admin.post("/api/auth/users",
+                         json={"username": "carol", "password": PASSWORD,
+                               "role": "user"})
+    assert r.status_code == 200, r.text
+    carol_id = r.json()["user"]["id"]
+    r = await admin.post(f"/api/auth/users/{carol_id}/disable")
+    assert r.status_code == 200, r.text
+
+    class _AbortRun(Exception):
+        """Abort this user's scheduled run before it touches the network."""
+
+    seen: list = []
+
+    async def _record_then_abort(self):
+        seen.append(self)
+        raise _AbortRun()
+
+    monkeypatch.setattr(Database, "get_scraper_keys", _record_then_abort)
+
+    await app.state.scheduled_jobs["scrape"]()
+
+    # Exactly the two ACTIVE users — carol is disabled, so never visited.
+    assert len(seen) == 2, f"expected 2 active users, saw {len(seen)}"
+    assert seen[0] is not seen[1]          # two distinct workspace DBs
+
+    owners = []
+    for db in seen:
+        # Job ids are per-workspace rowids, so they collide (both first jobs are
+        # id 1). Identify the workspace by the job's own tag instead.
+        job = await db.get_job(admin_job)
+        owners.append(job["title"] if job else None)
+    # Each cycle ran against that user's OWN workspace, holding their own job.
+    assert sorted(t for t in owners if t) == [
+        "ML Engineer sched-admin", "ML Engineer sched-alice"]

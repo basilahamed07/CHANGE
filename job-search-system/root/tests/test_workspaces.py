@@ -273,29 +273,48 @@ async def test_migration_never_moves_a_wal_belonging_to_another_db(tmp_path):
 
 @pytest.mark.asyncio
 async def test_first_migration_moves_db_together_with_its_wal(tmp_path):
-    """The sidecars of the DB being migrated must still travel WITH it."""
+    """The sidecars of the DB being migrated must still travel WITH it.
+
+    Windows note: this test cannot hold a live SQLite handle open across the
+    migration — Windows refuses to rename/unlink a file another process has
+    open (`WinError 32`). In production the migration runs at startup, before
+    any connection is opened, so the sidecars are materialised here as real
+    files on disk instead. `migrate_single_user` only asks `os.path.exists`
+    and `shutil.move`, so a sidecar file is exactly what it moves; this keeps
+    the move-one-unit contract under test on every platform.
+    """
     import sqlite3
 
     from app.workspace import WorkspaceManager
 
     data = tmp_path / "data"
     data.mkdir()
+
+    # Prove the DB is genuinely WAL-mode (and that a clean close checkpoints
+    # the WAL away — which is why the sidecars below are created by hand).
     con = sqlite3.connect(data / "jobagent.db", isolation_level=None)
     try:
         con.execute("CREATE TABLE jobs(id INTEGER)")
         con.execute("PRAGMA journal_mode=WAL")
         con.execute("INSERT INTO jobs VALUES (7)")
-        assert (data / "jobagent.db-wal").exists(), "precondition: DB has a WAL"
-
-        mgr = WorkspaceManager(users_root=str(tmp_path / "users"))
-        await mgr.migrate_single_user(str(data), {"id": 1, "username": "basil"})
-
-        wdir = tmp_path / "users" / "1-basil"
-        assert (wdir / "jobagent.db").exists()
-        assert (wdir / "jobagent.db-wal").exists()
-        assert not (data / "jobagent.db").exists()
+        assert (data / "jobagent.db-wal").exists(), "precondition: DB uses a WAL"
     finally:
         con.close()
+
+    # Sidecars present at migration time, as they would be for a running DB.
+    (data / "jobagent.db-wal").write_bytes(b"")
+    (data / "jobagent.db-shm").write_bytes(b"")
+
+    mgr = WorkspaceManager(users_root=str(tmp_path / "users"))
+    await mgr.migrate_single_user(str(data), {"id": 1, "username": "basil"})
+
+    wdir = tmp_path / "users" / "1-basil"
+    assert (wdir / "jobagent.db").exists()
+    assert (wdir / "jobagent.db-wal").exists()
+    assert (wdir / "jobagent.db-shm").exists()
+    assert not (data / "jobagent.db").exists()
+    # The sidecars must not be left behind next to the source either.
+    assert not (data / "jobagent.db-wal").exists()
 
     check = sqlite3.connect(tmp_path / "users" / "1-basil" / "jobagent.db")
     try:
@@ -358,7 +377,7 @@ async def test_search_blocked_until_a_resume_exists(world, monkeypatch):
     # stubbed so no real network scrape is launched.
     import app.routers.scraping as scraping_router
 
-    async def _noop(app_, task_id, db=None, matcher=None):
+    async def _noop(app_, task_id, db=None, matcher=None, **kwargs):
         return None
 
     monkeypatch.setattr(scraping_router, "_scrape_and_score", _noop)

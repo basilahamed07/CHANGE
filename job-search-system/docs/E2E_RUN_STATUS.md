@@ -16,6 +16,27 @@ committed; NEXT_5_PLAN.md progress board updated). Resume-first onboarding gate 
 discovery expansion reports below date from 2026-09-27 / 2026-09-28. Latest
 user-journey harness run remains `2026-09-24_125119` (definitive, config-isolated).
 
+**2026-10-03 — second user-journey run, shortened budgets.** Run `2026-10-02_221045`
+re-ran the real server end to end to prove the Stage-8 P0 fix (`POST /build` now packages
+the stored reviewed text; `s19_package` 10/10, real `metadata.json` shows
+`"generated_by": "stored"`). Result **23/26 · 200/203 · 250 calls · 84.6% API coverage**
+with `JOBAGENT_E2E_SCRAPE_SECS=20` / `DISCOVERY_SECS=20` — i.e. **not comparable** to the
+definitive run above. The 3 failures are all non-regressions: discovery had 20s (pool 0→1),
+the seeded job was `location_classified=0` so `score-all` had nothing eligible, and the CRM
+"unearned offered" probe was aimed at an already-`applied` job (harness bug, now fixed).
+Full analysis: `docs/STAGE_TEST_RESULTS.md` §6 · raw run:
+`analysis/e2e_runs/2026-10-02_221045/`.
+
+**Harness fixes landed 2026-10-03** (`analysis/e2e_user_journey.py`):
+1. `UnicodeEncodeError: cp1252` on `✓` at boot — stdout/stderr now reconfigured to UTF-8.
+2. The unearned-`offered` probe no longer falls back to `user_job_id` (already `applied`),
+   which produced a false FAIL whenever the pool held no second job — it now uses an
+   untouched job or skips with an explicit note.
+3. A **shortened-budget run can no longer overwrite** `docs/USER_JOURNEY_E2E_REPORT.md`;
+   only a full-budget run (scrape ≥ 240s, discovery ≥ 300s) may replace the canonical report.
+   The definitive `26/26` report was restored from git after run `2026-10-02_221045`
+   overwrote it.
+
 ---
 
 ## 1. Headline result

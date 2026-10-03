@@ -396,14 +396,23 @@ def test_build_ai_client_signature_accepts_settings_object():
     from app.main import _build_ai_client
     from app.config import Settings
 
-    s = Settings(openrouter_api_key="sk-or-test", anthropic_api_key="")
+    # `_env_file=None` + every provider key blanked keeps this test independent
+    # of root/.env. Without it a real key in .env (e.g. JOBAGENT_DEEPSEEK_API_KEY)
+    # leaks into Settings and _build_ai_client returns a client where this test
+    # expects None — the assertion below is about the *function*, not the machine.
+    def _no_keys(**over):
+        base = dict(_env_file=None, openrouter_api_key="", anthropic_api_key="",
+                    deepseek_api_key="", openai_api_key="", google_api_key="")
+        base.update(over)
+        return Settings(**base)
+
+    s = _no_keys(openrouter_api_key="sk-or-test")
     client = _build_ai_client(None, s, env_key="")
     assert client is not None
     assert client.provider == "openrouter"
 
     # No sources configured -> no client, and definitely no crash.
-    s_empty = Settings(openrouter_api_key="", anthropic_api_key="")
-    assert _build_ai_client(None, s_empty, env_key="") is None
+    assert _build_ai_client(None, _no_keys(), env_key="") is None
 
 
 @pytest.mark.asyncio

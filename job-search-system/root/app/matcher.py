@@ -147,6 +147,12 @@ CRITICAL RULES:
 - If role_match is false, score MUST be 50 or below regardless of skills overlap."""
 
 
+# Stage-4 hardening: the "role_match false ⇒ score ≤ 50" rule was previously
+# prompt-only. It is a deterministic rule, so it is enforced here in code
+# (Golden Rule 4) rather than trusted to the model.
+ROLE_MATCH_SCORE_CAP = 50
+
+
 def _format_candidate_focus(focus: dict | None) -> str:
     """Format search_config/resume-analyzer output into a prompt block."""
     if not focus:
@@ -192,7 +198,17 @@ class JobMatcher:
                 job_description=job_description,
             )
             raw = await self.client.chat(prompt, max_tokens=1024)
-            return parse_json_response(raw)
+            parsed = parse_json_response(raw)
+            if not isinstance(parsed, dict):
+                raise ValueError(f"Expected JSON object, got {type(parsed).__name__}")
+            # Same normalisation as the batch path: the 50-point cap is applied
+            # in code (not just asked for in the prompt) whenever the model
+            # explicitly reports role_match = false.
+            normalised = self._normalise_entry(parsed, job_id=None)
+            if normalised is None:
+                raise ValueError("Scoring response carried no usable score")
+            normalised.pop("job_id")
+            return normalised
         except Exception as e:
             provider = getattr(self.client, "provider", "unknown")
             base_url = getattr(self.client, "base_url", "")
@@ -210,7 +226,13 @@ class JobMatcher:
             return None
 
     async def score_batch(self, jobs: list[dict]) -> list[dict]:
-        """Score a batch of jobs. Returns only successful results (no None entries)."""
+        """Score a batch of jobs. Returns ONLY jobs actually scored.
+
+        Never padded and never fabricated: a job the model did not score is
+        absent from the result and stays unscored for the next cycle.
+        """
+        if not jobs:
+            return []
         jobs_block = "\n\n".join(
             f"--- JOB {i} ---\n{job['description']}"
             for i, job in enumerate(jobs)
@@ -224,15 +246,20 @@ class JobMatcher:
         max_tokens = 512 * len(jobs)
         try:
             raw = await self.client.chat(prompt, max_tokens=max_tokens)
-            parsed = self._parse_batch_response(raw, len(jobs))
-            for i, result in enumerate(parsed):
-                result["job_id"] = jobs[i]["id"]
-            return parsed
+            results = self._parse_batch_response(raw, jobs)
         except Exception as e:
             logger.error(f"Batch scoring failed, falling back to individual: {e}")
             return await self._fallback_individual(jobs)
+        if not results:
+            # Parsed cleanly but produced nothing usable — fall back rather than
+            # letting an empty batch look like a completed one.
+            logger.warning("Batch response yielded no usable scores, falling back to individual")
+            return await self._fallback_individual(jobs)
+        return results
 
-    def _parse_batch_response(self, raw: str, expected_count: int) -> list[dict]:
+    @staticmethod
+    def _extract_array(raw: str) -> list:
+        """Pull the JSON array out of a model response (tolerating ``` fences)."""
         raw = raw.strip()
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
@@ -242,21 +269,90 @@ class JobMatcher:
             data = list(data.values())[0]
         if not isinstance(data, list):
             raise ValueError(f"Expected JSON array, got {type(data)}")
+        return data
+
+    @staticmethod
+    def _normalise_entry(entry: dict, job_id) -> dict | None:
+        """Validate one scoring entry. Returns None if it carries no usable score.
+
+        Returning None (rather than defaulting to 0) is the point: a malformed
+        entry must be SKIPPED, never silently recorded as a genuine zero score.
+        """
+        score = entry.get("score")
+        if isinstance(score, bool) or not isinstance(score, (int, float)):
+            return None
+        score = int(score)
+        score = max(0, min(100, score))
+        # Cap ONLY on an explicit role_match=false. An absent field is not
+        # evidence of a mismatch, and inventing a penalty from a missing field
+        # would be the same fabrication this module refuses to do with scores.
+        # (Both prompts already instruct the model to self-apply this cap; this
+        # enforces it deterministically when the model states a mismatch.)
+        role_match = entry.get("role_match", True)
+        if isinstance(role_match, str):
+            role_match = role_match.strip().lower() in ("true", "yes", "1")
+        else:
+            role_match = bool(role_match)
+        if not role_match:
+            score = min(score, ROLE_MATCH_SCORE_CAP)
+        return {
+            "job_id": job_id,
+            "score": score,
+            "role_match": role_match,
+            "reasons": entry.get("reasons") or [],
+            "concerns": entry.get("concerns") or [],
+            "keywords": entry.get("keywords") or [],
+        }
+
+    def _parse_batch_response(self, raw: str, jobs: list[dict]) -> list[dict]:
+        """Parse a batch response into per-job results, each tagged with its job_id.
+
+        Stage-4 contract:
+        - Only jobs the model actually scored are returned. A job with no matching
+          entry is OMITTED, never padded with a fabricated score of 0 (defect D1).
+        - Entries are matched by `job_index` when every entry carries one.
+          Otherwise positional alignment is accepted only if the counts match
+          exactly — the order the prompt promises. A count mismatch is an
+          alignment failure and raises, so the caller falls back to individual
+          scoring instead of guessing (defect D2).
+        """
+        data = self._extract_array(raw)
+        if not data:
+            raise ValueError("Batch response was an empty array")
+
+        all_indexed = all(isinstance(d.get("job_index"), int) for d in data)
+        if all_indexed:
+            by_index: dict[int, dict] = {}
+            for d in data:
+                idx = d["job_index"]
+                if idx < 0 or idx >= len(jobs):
+                    raise ValueError(
+                        f"job_index {idx} out of range for {len(jobs)} jobs")
+                by_index[idx] = d
+        elif len(data) == len(jobs):
+            # No usable indices, but the prompt promises "same order as above".
+            by_index = {i: d for i, d in enumerate(data)}
+        else:
+            raise ValueError(
+                f"Batch response has {len(data)} entries for {len(jobs)} jobs "
+                "and no usable job_index — cannot align safely")
+
         results = []
-        for i in range(expected_count):
-            entry = next((d for d in data if d.get("job_index") == i), None)
-            if entry is None and i < len(data):
-                entry = data[i]
-            if entry:
-                results.append({
-                    "score": entry.get("score", 0),
-                    "role_match": entry.get("role_match", True),
-                    "reasons": entry.get("reasons", []),
-                    "concerns": entry.get("concerns", []),
-                    "keywords": entry.get("keywords", []),
-                })
-            else:
-                results.append({"score": 0, "role_match": True, "reasons": [], "concerns": ["Missing from batch response"], "keywords": []})
+        skipped = 0
+        for i, job in enumerate(jobs):
+            entry = by_index.get(i)
+            if entry is None:
+                skipped += 1
+                continue
+            normalised = self._normalise_entry(entry, job["id"])
+            if normalised is None:
+                skipped += 1
+                continue
+            results.append(normalised)
+        if skipped:
+            logger.warning(
+                f"Batch scoring: {skipped}/{len(jobs)} jobs had no usable score — "
+                "left unscored for the next cycle (not fabricated)")
         return results
 
     async def _fallback_individual(self, jobs: list[dict]) -> list[dict]:

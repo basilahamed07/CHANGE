@@ -88,11 +88,3 @@ async def send_email(
         logger.error(f"Failed to send email to {to}: {e}")
         return False
 
-
-async def send_application_email(smtp_settings: dict, email_draft: dict) -> bool:
-    return await send_email(
-        smtp_settings,
-        to=email_draft["to"],
-        subject=email_draft["subject"],
-        body_text=email_draft["body"],
-    )

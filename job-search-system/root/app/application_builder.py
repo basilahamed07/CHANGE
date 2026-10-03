@@ -7,7 +7,7 @@ Package layout (per job):
         resume.txt           (plain text — review + hashing)
         cover_letter.txt     (plain text — review + hashing)
         metadata.json        (hashes, profile version, evidence-check result,
-                              model, status, generated_at)
+                              model, status, generated_at, generated_by)
 
 Golden Rules honored:
 - Evidence is sacred (Rule 5): the builder REFUSES to package text that fails
@@ -59,6 +59,9 @@ class PackageInputs:
     model: str = ""
     evidence_check_ok: bool = True
     evidence_check_failures: list = field(default_factory=list)
+    # Provenance only — deliberately NOT part of the fingerprint, so recording
+    # how the text was produced cannot change package identity or force a rebuild.
+    generated_by: str = "stored"   # "stored" (human-reviewed text) | "regenerated" (AI)
 
     def fingerprint(self) -> str:
         """Content hash of ALL generation inputs — the no-op regeneration key."""
@@ -161,6 +164,7 @@ class ApplicationBuilder:
             "resume_version_id": inputs.resume_version_id,
             "profile_version": inputs.profile_version,
             "model": inputs.model,
+            "generated_by": inputs.generated_by,
             "evidence_check": evidence_check_result or {
                 "ok": inputs.evidence_check_ok,
                 "failures": inputs.evidence_check_failures,

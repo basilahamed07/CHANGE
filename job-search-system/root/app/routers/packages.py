@@ -1,9 +1,11 @@
 """M8: /api/packages — application package generation surface.
 
-build: runs the FULL evidence-gated pipeline (AI tailoring → EvidenceChecker →
-regenerate-on-fail) and materializes the Phase-19 package directory.
-refresh: rebuilds from the STORED tailored text (no AI) — idempotent no-op when
-inputs are unchanged.
+build (default): packages the STORED human-reviewed text. Zero AI, and it never
+    rewrites that text — so what a person approved is exactly what ships.
+build?regenerate=true: re-runs AI tailoring through the EvidenceChecker
+    (regenerate-on-fail) and PERSISTS the new text before packaging. This is the
+    ONLY path that rewrites the reviewed text, and it must be asked for.
+    (`refresh=true` is accepted as a legacy alias for the default.)
 list: all built packages.
 """
 
@@ -35,8 +37,17 @@ def _profile_version(request: Request) -> str:
 
 
 @router.post("/jobs/{job_id}/build")
-async def build_package(request: Request, job_id: int, refresh: bool = False):
-    """Evidence-gated package build. refresh=true repackages stored text (no AI)."""
+async def build_package(request: Request, job_id: int, refresh: bool = False,
+                        regenerate: bool = False):
+    """Evidence-gated application package build.
+
+    P0 contract — a plain build never destroys the text a human reviewed:
+    - **default** (and legacy `refresh=true`): package the STORED reviewed text
+      exactly as written. Zero AI, no rewrite.
+    - **regenerate=true**: re-run AI tailoring through the evidence gate, PERSIST
+      the new text, then build. The only path that rewrites it, asked for
+      explicitly.
+    """
     from app.application_builder import EvidenceViolationError, PackageInputs, sha256_text
     db = _db(request)
     job = await db.get_job(job_id)
@@ -51,16 +62,11 @@ async def build_package(request: Request, job_id: int, refresh: bool = False):
     if store is None or checker is None:
         raise HTTPException(503, "Evidence store unavailable — packaging blocked (fail-closed)")
 
-    if refresh and app_row and app_row.get("tailored_resume"):
-        tailored = app_row["tailored_resume"]
-        cover = app_row.get("cover_letter") or ""
-        ai_settings = await db.get_ai_settings()
-        model = (ai_settings or {}).get("model", "")
-        check = checker.check(tailored, candidate_skill_values=store.skill_values_all_statuses())
-        evidence_result = check.to_dict()
-    elif not tailor:
-        raise HTTPException(503, "No AI tailoring available — run /prepare first or use refresh=true")
-    else:
+    stored_text = (app_row or {}).get("tailored_resume") or ""
+
+    if regenerate:
+        if not tailor:
+            raise HTTPException(503, "No AI tailoring available — cannot regenerate")
         # Full path: AI tailoring + hard gate + one regeneration (same as /prepare)
         score = await db.get_score(job_id)
         result = await tailor.prepare(
@@ -83,7 +89,7 @@ async def build_package(request: Request, job_id: int, refresh: bool = False):
             check = checker.check(tailored, candidate_skill_values=store.skill_values_all_statuses())
         evidence_result = check.to_dict()
 
-        # Persist prepared text (same contract as /prepare)
+        # Persist the regenerated text — explicit user request (same as /prepare).
         application = await db.get_application(job_id)
         if not application:
             app_id = await db.insert_application(job_id, "prepared")
@@ -91,6 +97,20 @@ async def build_package(request: Request, job_id: int, refresh: bool = False):
             app_id = application["id"]
         await db.update_application(app_id, status="prepared",
                                     tailored_resume=tailored, cover_letter=cover)
+        generated_by = "regenerated"
+    else:
+        # DEFAULT (refresh is a legacy alias): package the reviewed text as-is.
+        if not stored_text:
+            raise HTTPException(409, detail={
+                "error": "no_reviewed_text",
+                "message": "No reviewed text to package. Run /prepare first, or "
+                           "pass regenerate=true to create it with AI.",
+            })
+        tailored = stored_text
+        cover = (app_row or {}).get("cover_letter") or ""
+        check = checker.check(tailored, candidate_skill_values=store.skill_values_all_statuses())
+        evidence_result = check.to_dict()
+        generated_by = "stored"
 
     if not check.ok:
         raise HTTPException(422, detail={
@@ -114,6 +134,7 @@ async def build_package(request: Request, job_id: int, refresh: bool = False):
         model=(ai_settings or {}).get("model", ""),
         evidence_check_ok=True,
         evidence_check_failures=[],
+        generated_by=generated_by,
     )
     try:
         result = await builder.build(inputs, evidence_check_result=evidence_result)

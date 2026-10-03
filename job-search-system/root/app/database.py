@@ -777,10 +777,30 @@ class Database:
             # M6: hybrid engine breakdown + blockers (audit trail for every score)
             "component_scores": "ALTER TABLE job_scores ADD COLUMN component_scores TEXT",
             "hard_blockers": "ALTER TABLE job_scores ADD COLUMN hard_blockers TEXT",
+            # Score ownership: the AI and hybrid engines each own their own score
+            # column, so neither can erase the other. `match_score` is kept as a
+            # mirror of the *effective* score (AI if present, else hybrid) so all
+            # existing readers keep working unchanged.
+            "ai_score": "ALTER TABLE job_scores ADD COLUMN ai_score INTEGER",
+            "ai_scored_at": "ALTER TABLE job_scores ADD COLUMN ai_scored_at TEXT",
+            "ai_model": "ALTER TABLE job_scores ADD COLUMN ai_model TEXT",
+            "hybrid_score": "ALTER TABLE job_scores ADD COLUMN hybrid_score INTEGER",
+            "hybrid_scored_at": "ALTER TABLE job_scores ADD COLUMN hybrid_scored_at TEXT",
         }
         for col, sql in scores_migrations.items():
             if col not in scores_columns:
                 await self.db.execute(sql)
+
+        # Backfill ownership for rows written before the split. The only signal
+        # available is the hybrid breakdown: a row carrying component_scores was
+        # written by the hybrid engine; one without was written by the AI engine.
+        await self.db.execute(
+            """UPDATE job_scores SET hybrid_score = match_score
+               WHERE component_scores IS NOT NULL AND hybrid_score IS NULL""")
+        await self.db.execute(
+            """UPDATE job_scores SET ai_score = match_score
+               WHERE component_scores IS NULL AND ai_score IS NULL""")
+        await self.db.commit()
 
         # user_profile migrations - add new columns
         profile_cursor = await self.db.execute("PRAGMA table_info(user_profile)")
@@ -1122,30 +1142,57 @@ class Database:
         )
         await self.db.commit()
 
-    async def insert_score(self, job_id, match_score, match_reasons, concerns, suggested_keywords, role_match=True):
+    async def insert_score(self, job_id, match_score, match_reasons, concerns,
+                           suggested_keywords, role_match=True, model=None):
+        """Persist an AI score. Owns the `ai_*` columns and mirrors match_score.
+
+        Never touches `hybrid_score` / `component_scores`, so a hybrid score
+        already on the row survives. The AI score is the effective one whenever
+        present, so the shared descriptive columns take the AI's values.
+        """
         now = datetime.now(timezone.utc).isoformat()
         await self.db.execute(
-            """INSERT OR REPLACE INTO job_scores
-               (job_id, match_score, match_reasons, concerns, suggested_keywords, scored_at, role_match)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO job_scores
+               (job_id, match_score, match_reasons, concerns, suggested_keywords,
+                scored_at, role_match, ai_score, ai_scored_at, ai_model)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(job_id) DO UPDATE SET
+                 ai_score = excluded.ai_score,
+                 ai_scored_at = excluded.ai_scored_at,
+                 ai_model = excluded.ai_model,
+                 match_score = excluded.ai_score,
+                 match_reasons = excluded.match_reasons,
+                 concerns = excluded.concerns,
+                 suggested_keywords = excluded.suggested_keywords,
+                 role_match = excluded.role_match,
+                 scored_at = excluded.scored_at""",
             (job_id, match_score, json.dumps(match_reasons), json.dumps(concerns),
-             json.dumps(suggested_keywords), now, 1 if role_match else 0)
+             json.dumps(suggested_keywords), now, 1 if role_match else 0,
+             match_score, now, model)
         )
         await self.db.commit()
 
     async def clear_failed_scores(self) -> int:
-        """Remove score=0 entries that were created by transient errors, so jobs can be rescored."""
+        """Remove transient AI failures (score=0 + error concern) so jobs can be
+        rescored — without destroying a hybrid score that shares the row."""
         cursor = await self.db.execute(
-            """DELETE FROM job_scores
-               WHERE match_score = 0
-               AND (concerns LIKE '%unavailable%'
-                    OR concerns LIKE '%unreachable%'
-                    OR concerns LIKE '%Scoring error%'
-                    OR concerns LIKE '%circuit breaker%'
-                    OR concerns LIKE '%rate limit%')"""
+            """UPDATE job_scores
+               SET ai_score = NULL, ai_scored_at = NULL, ai_model = NULL,
+                   match_score = COALESCE(hybrid_score, 0),
+                   scored_at = COALESCE(hybrid_scored_at, scored_at)
+               WHERE ai_score = 0
+                 AND (concerns LIKE '%unavailable%'
+                      OR concerns LIKE '%unreachable%'
+                      OR concerns LIKE '%Scoring error%'
+                      OR concerns LIKE '%circuit breaker%'
+                      OR concerns LIKE '%rate limit%')"""
         )
+        cleared = cursor.rowcount
+        # A row left with no score at all is removed so the job is rescored.
+        await self.db.execute(
+            "DELETE FROM job_scores WHERE ai_score IS NULL AND hybrid_score IS NULL")
         await self.db.commit()
-        return cursor.rowcount
+        return cleared
 
     async def clear_all_scores(self) -> int:
         """Remove all score entries so every job can be rescored with a new rubric."""
@@ -1174,16 +1221,41 @@ class Database:
     async def upsert_hybrid_score(self, job_id: int, score: int, reasons: list,
                                   concerns: list, keywords: list, role_match: bool,
                                   component_scores: dict, hard_blockers: list) -> None:
-        """M6: persist a hybrid score with its component breakdown + blockers."""
+        """M6: persist a hybrid score with its component breakdown + blockers.
+
+        Owns `hybrid_score` and the breakdown columns; **never touches the AI
+        score**. If no AI score exists, this hybrid score becomes the effective
+        one and its descriptive fields mirror into the shared columns; if an AI
+        score exists, the AI's descriptive fields are left intact (AI wins).
+        """
         now = datetime.now(timezone.utc).isoformat()
         await self.db.execute(
-            """INSERT OR REPLACE INTO job_scores
-               (job_id, match_score, match_reasons, concerns, suggested_keywords, scored_at, role_match,
-                component_scores, hard_blockers)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO job_scores
+               (job_id, match_score, match_reasons, concerns, suggested_keywords,
+                scored_at, role_match, component_scores, hard_blockers,
+                hybrid_score, hybrid_scored_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(job_id) DO UPDATE SET
+                 hybrid_score = excluded.hybrid_score,
+                 hybrid_scored_at = excluded.hybrid_scored_at,
+                 component_scores = excluded.component_scores,
+                 hard_blockers = excluded.hard_blockers,
+                 match_score = CASE WHEN job_scores.ai_score IS NULL
+                     THEN excluded.match_score ELSE job_scores.match_score END,
+                 match_reasons = CASE WHEN job_scores.ai_score IS NULL
+                     THEN excluded.match_reasons ELSE job_scores.match_reasons END,
+                 concerns = CASE WHEN job_scores.ai_score IS NULL
+                     THEN excluded.concerns ELSE job_scores.concerns END,
+                 suggested_keywords = CASE WHEN job_scores.ai_score IS NULL
+                     THEN excluded.suggested_keywords ELSE job_scores.suggested_keywords END,
+                 role_match = CASE WHEN job_scores.ai_score IS NULL
+                     THEN excluded.role_match ELSE job_scores.role_match END,
+                 scored_at = CASE WHEN job_scores.ai_score IS NULL
+                     THEN excluded.scored_at ELSE job_scores.scored_at END""",
             (job_id, score, json.dumps(reasons), json.dumps(concerns),
              json.dumps(keywords), now, 1 if role_match else 0,
-             json.dumps(component_scores), json.dumps(hard_blockers))
+             json.dumps(component_scores), json.dumps(hard_blockers),
+             score, now)
         )
         await self.db.commit()
 
@@ -1720,15 +1792,20 @@ class Database:
         await self.db.commit()
 
     async def get_scoreable_jobs(self, limit: int = 10000) -> list[dict]:
-        """Stage-4 SCORE entry: ONLY jobs the eligibility gate marked ELIGIBLE.
+        """Stage-4 SCORE entry: ONLY jobs the eligibility gate marked ELIGIBLE
+        and that have **no AI score yet**.
 
         This is the contract that stops INELIGIBLE / REVIEW_REQUIRED jobs from
         leaking into scoring. Deterministic + dismissal/classification gated.
+
+        "No AI score" (not "no row"): a job the hybrid engine has already
+        scored is still AI-scoreable, so a hybrid pass can never lock a job out
+        of AI scoring.
         """
         cursor = await self.db.execute(
             """SELECT j.* FROM jobs j
                LEFT JOIN job_scores js ON j.id = js.job_id
-               WHERE js.id IS NULL AND j.dismissed = 0
+               WHERE js.ai_score IS NULL AND j.dismissed = 0
                AND j.location_classified = 1
                AND j.eligibility_status = 'ELIGIBLE' LIMIT ?""", (limit,))
         return [dict(r) for r in await cursor.fetchall()]

@@ -236,11 +236,17 @@ async def test_job_closed_gate():
     r = eng.check(_job(job_status="closed"))
     assert r.status == STATUS_INELIGIBLE and r.gate == G_JOB_STATUS
     assert r.reason == R_JOB_CLOSED
-    past = (date.today() - timedelta(days=1)).isoformat()
-    r2 = eng.check(_job(closing_date=past))
+    # Derive past/future from the SAME clock the engine compares against
+    # (`_today` uses UTC), and pass it in explicitly. Using local
+    # `date.today()` here made the test wall-clock dependent: whenever the
+    # local date is ahead of the UTC date the "yesterday" it computes is
+    # still today in UTC, so the job is (correctly) not yet closed.
+    now = datetime.now(timezone.utc)
+    past = (now.date() - timedelta(days=1)).isoformat()
+    r2 = eng.check(_job(closing_date=past), now=now)
     assert r2.reason == R_JOB_CLOSED
-    future = (date.today() + timedelta(days=3)).isoformat()
-    assert eng.check(_job(closing_date=future)).eligible
+    future = (now.date() + timedelta(days=3)).isoformat()
+    assert eng.check(_job(closing_date=future), now=now).eligible
 
 
 @pytest.mark.asyncio

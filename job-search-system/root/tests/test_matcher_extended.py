@@ -105,15 +105,21 @@ async def test_parse_batch_response_dict_wrapper(mock_client):
 
 
 async def test_parse_batch_response_missing_entry(mock_client):
+    """Stage-4 contract: an entry with no usable score is OMITTED, never
+    padded with a fabricated 0 (defect D1). The unscored job is left for the
+    next cycle instead of being given a score the model never produced."""
     mock_client.chat = AsyncMock(return_value=json.dumps([
         {"job_index": 0, "score": 85, "reasons": [], "concerns": [], "keywords": []},
     ]))
     matcher = JobMatcher(mock_client, SAMPLE_RESUME)
     jobs = [{"id": 1, "description": "a"}, {"id": 2, "description": "b"}]
     results = await matcher.score_batch(jobs)
+    # Only the scored job comes back — no fabricated entry for job 2.
+    assert len(results) == 1
+    assert results[0]["job_id"] == 1
     assert results[0]["score"] == 85
-    # Second job should get a 0-score fallback
-    assert results[1]["score"] == 0
+    # Every returned row carries a real model score; nothing was invented.
+    assert all(r["score"] != 0 for r in results)
 
 
 async def test_batch_score_individual_with_delay(mock_client):

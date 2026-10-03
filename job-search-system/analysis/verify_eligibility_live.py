@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import sqlite3
 import sys
 import tempfile
 import time
@@ -29,12 +30,44 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / "root"
 sys.path.insert(0, str(ROOT))
 
+# Windows consoles default to cp1252; the report prints non-ASCII (→, —) and
+# would die with UnicodeEncodeError *after* doing all the work. Force UTF-8.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 from app.country_registry import CountryRegistry             # noqa: E402
 from app.database import Database                            # noqa: E402
 from app.scheduler import run_eligibility_pass, run_location_classification  # noqa: E402
 
 JS = Path(__file__).resolve().parents[1]
-SRC_DB = ROOT / "data" / "users" / "1-basil" / "jobagent.db"
+# Live rows live either in the admin's per-user workspace (after the multi-user
+# migration) or, on a deployment that has not been migrated yet, in the original
+# root/data/jobagent.db. Point at whichever actually holds jobs — otherwise the
+# "live" run evaluates an empty DB and reports all zeros.
+_WS_DB = ROOT / "data" / "users" / "1-basil" / "jobagent.db"
+_LEGACY_DB = ROOT / "data" / "jobagent.db"
+
+
+def _pick_src_db() -> Path:
+    best, best_n = _LEGACY_DB, -1
+    for p in (_LEGACY_DB, _WS_DB):
+        if not p.exists():
+            continue
+        try:
+            con = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+            n = con.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+            con.close()
+        except sqlite3.Error:
+            continue
+        if n > best_n:
+            best, best_n = p, n
+    return best
+
+
+SRC_DB = _pick_src_db()
 OUT = JS / "docs" / "eligibility" / "results" / "eligibility_summary.json"
 
 

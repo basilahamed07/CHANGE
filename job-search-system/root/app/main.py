@@ -2,7 +2,9 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
@@ -78,9 +80,6 @@ async def lifespan(app: FastAPI):
     settings = Settings()
     app.state.settings = settings
     os.makedirs(_data_dir, exist_ok=True)
-    # Stale-state recovery: a crashed previous run must never leave active=true.
-    app.state.scrape_progress = None
-    app.state.scrape_task = None
     app.state.db = Database(db_path)
     await app.state.db.init()
     # M14: route the LLM cost meter into the DB so spend survives restarts
@@ -251,77 +250,133 @@ async def lifespan(app: FastAPI):
 
         scheduler = AsyncIOScheduler()
 
-        async def scheduled_scrape():
+        # N2: every scheduled cycle used to run against `app.state.bg_db` — the
+        # ADMIN's workspace only — so a second user's pool never got background
+        # discovery/scoring/refresh at all. These helpers enumerate ACTIVE users
+        # and run each cycle against that user's OWN workspace DB + profile.
+        # Runs are staggered so N users scraping from one host do not trip source
+        # rate limits together, and every run logs run_id + user_id.
+        _user_stagger = getattr(settings, "scheduler_user_stagger_seconds", 5.0)
+
+        async def _user_targets():
+            """[(user_id, db, ai_state, shim)] for every active user."""
+            out = []
             try:
-                bg_db = app.state.bg_db
-                config = await bg_db.get_search_config()
-                terms = config["search_terms"] if config else []
-                keys = await bg_db.get_scraper_keys()
-                scrapers = [s(search_terms=terms, scraper_keys=keys) for s in ALL_SCRAPERS]
-                await run_scrape_cycle(bg_db, scrapers, search_terms=terms, scraper_keys=keys)
+                users = await app.state.auth_store.list_users()
             except Exception:
-                logger.exception("Scheduled scrape failed")
+                logger.exception("Scheduler: could not list users")
+                return out
+            for u in users:
+                if not u.get("is_active", 1):
+                    continue
+                try:
+                    ws = await app.state.workspaces.get_or_create(u)
+                    st = await app.state.ai_state_for_workspace(ws)
+                except Exception:
+                    logger.exception("Scheduler: workspace/AI state failed for user %s",
+                                     u.get("id"))
+                    continue
+                shim = SimpleNamespace(
+                    run_key=u["id"],
+                    evidence_store=st.get("evidence_store"),
+                    evidence_checker=st.get("evidence_checker"),
+                    embedding_client=getattr(app.state, "embedding_client", None),
+                    country_registry=getattr(app.state, "country_registry", None),
+                    matcher=st.get("matcher"),
+                    tailor=st.get("tailor"),
+                    ai_client=st.get("ai_client"),
+                )
+                out.append((u["id"], ws.db, st, shim))
+            return out
+
+        async def _for_each_user(label, fn):
+            """Run `fn(db, st, shim)` once per active user, staggered."""
+            targets = await _user_targets()
+            for idx, (uid, db, st, shim) in enumerate(targets):
+                if idx and _user_stagger:
+                    await asyncio.sleep(_user_stagger)
+                run_id = uuid.uuid4().hex[:8]
+                try:
+                    logger.info("Scheduled %s run_id=%s user_id=%s", label, run_id, uid)
+                    await fn(db, st, shim)
+                except Exception:
+                    logger.exception("Scheduled %s failed run_id=%s user_id=%s",
+                                     label, run_id, uid)
+
+        async def scheduled_scrape():
+            async def _one(db, st, shim):
+                config = await db.get_search_config()
+                terms = config["search_terms"] if config else []
+                keys = await db.get_scraper_keys()
+                scrapers = [s(search_terms=terms, scraper_keys=keys)
+                            for s in ALL_SCRAPERS]
+                await run_scrape_cycle(db, scrapers, search_terms=terms,
+                                       scraper_keys=keys)
+            await _for_each_user("scrape", _one)
 
         async def scheduled_enrichment():
-            try:
-                await run_enrichment_cycle(app.state.bg_db)
-            except Exception:
-                logger.exception("Scheduled enrichment failed")
+            await _for_each_user(
+                "enrichment", lambda db, st, shim: run_enrichment_cycle(db))
 
         async def scheduled_scoring():
-            try:
-                await run_location_classification(app.state.bg_db, app.state.ai_client)
+            async def _one(db, st, shim):
+                await run_location_classification(db, shim.ai_client)
                 # Stage-3 ELIGIBILITY: persist the gate decision before scoring
                 # so only ELIGIBLE jobs reach SCORE (contract, Golden Rule 4).
                 from app.scheduler import run_eligibility_pass
-                await run_eligibility_pass(app.state.bg_db,
-                                           getattr(app.state, "country_registry", None))
-                await app.state.score_unscored(app.state.bg_db)
-            except Exception:
-                logger.exception("AI scoring failed")
+                await run_eligibility_pass(
+                    db, getattr(app.state, "country_registry", None))
+                await app.state.score_unscored(db, st.get("matcher"),
+                                               run_key=str(shim.run_key))
+            await _for_each_user("scoring", _one)
             # M6: free deterministic hybrid baseline for anything AI could not
             # score (quota exhausted / provider down). Never blocks on AI.
-            try:
+            async def _hybrid(db, st, shim):
                 from app.matching_service import score_all_unscored
-                await score_all_unscored(app.state, app.state.bg_db)
-            except Exception:
-                logger.exception("Hybrid baseline scoring failed")
+                await score_all_unscored(shim, db)
+            await _for_each_user("hybrid_scoring", _hybrid)
 
         async def scheduled_maintenance():
-            try:
-                await run_maintenance_cycle(app.state.bg_db)
-            except Exception:
-                logger.exception("Scheduled maintenance failed")
+            await _for_each_user(
+                "maintenance", lambda db, st, shim: run_maintenance_cycle(db))
 
         async def scheduled_reminder_check():
-            try:
-                due = await run_reminder_check(app.state.bg_db, embedding_client=app.state.embedding_client)
+            async def _one(db, st, shim):
+                due = await run_reminder_check(
+                    db, embedding_client=getattr(shim, "embedding_client", None))
                 for r in due:
-                    await app.state.bg_db.add_event(
+                    await db.add_event(
                         r["job_id"], "reminder_due",
                         f"Follow-up reminder due for {r.get('company', 'unknown')}"
                     )
-            except Exception:
-                logger.exception("Scheduled reminder check failed")
+            await _for_each_user("reminder_check", _one)
 
         async def scheduled_digest():
-            try:
-                await run_digest_cycle(app.state.bg_db)
-            except Exception:
-                logger.exception("Scheduled digest failed")
+            await _for_each_user(
+                "digest", lambda db, st, shim: run_digest_cycle(db))
 
         async def scheduled_alert_check():
-            try:
-                await run_alert_check(app.state.bg_db)
-            except Exception:
-                logger.exception("Scheduled alert check failed")
+            await _for_each_user(
+                "alert_check", lambda db, st, shim: run_alert_check(db))
 
         async def scheduled_embedding():
-            try:
-                await run_job_embedding_cycle(app.state.bg_db, app.state.embedding_client)
-                await run_context_embedding_cycle(app.state.bg_db, app.state.embedding_client)
-            except Exception:
-                logger.exception("Scheduled embedding failed")
+            async def _one(db, st, shim):
+                emb = getattr(shim, "embedding_client", None)
+                await run_job_embedding_cycle(db, emb)
+                await run_context_embedding_cycle(db, emb)
+            await _for_each_user("embedding", _one)
+
+        # Exposed so an operator/tests can fire one pass on demand.
+        app.state.scheduled_jobs = {
+            "scrape": scheduled_scrape,
+            "enrichment": scheduled_enrichment,
+            "scoring": scheduled_scoring,
+            "maintenance": scheduled_maintenance,
+            "reminder_check": scheduled_reminder_check,
+            "digest": scheduled_digest,
+            "alert_check": scheduled_alert_check,
+            "embedding": scheduled_embedding,
+        }
 
         scheduler.add_job(
             scheduled_scrape, "interval",
@@ -371,6 +426,7 @@ async def lifespan(app: FastAPI):
         app.state.ai_client = None
         app.state.embedding_client = None
         app.state.scheduler = None
+        app.state.scheduled_jobs = {}
 
     app.state.start_time = _time.monotonic()
 
@@ -428,14 +484,18 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
     app.add_middleware(AuthGuardMiddleware, store=app.state.auth_store,
                        throttler=app.state.login_throttler)
 
-    app.state.scoring_progress = None
-    app.state.scrape_progress = None
-    app.state.scrape_task = None
-    app.state.scoring_lock = asyncio.Lock()
     app.state.notification_subscribers: list[asyncio.Queue] = []
     app.state.notification_lock = asyncio.Lock()
     app.state.queue_subscribers: list[asyncio.Queue] = []
     app.state.alert_threshold = 80
+    # N3: per-user run state. Discovery/scrape/scoring progress lives in this
+    # registry, keyed by user, so one user's run can never block or be shown to
+    # another. Created at construction (not startup) so ASGI-transport test
+    # clients, which never run the lifespan, still see it. A fresh registry per
+    # app instance is also the stale-state recovery a crashed run needs — no
+    # slot can survive as active=true.
+    from app.run_state import RunRegistry
+    app.state.run_registry = RunRegistry()
 
     # --- Shared helpers attached to app.state for router access ---
 
@@ -455,11 +515,14 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
             notif = {"id": notif_id, "job_id": job_id, "type": "high_score", "title": title, "message": message, "read": 0}
             await _broadcast_notification(notif)
 
-    async def _score_unscored(db, matcher=None):
+    async def _score_unscored(db, matcher=None, run_key="anon"):
         # M15c: callers that own a per-user workspace pass THAT user's matcher so
         # background scoring never grades one user's jobs with another's profile.
         # Default (no workspace bound) stays the app-level matcher.
-        async with app.state.scoring_lock:
+        # N3: progress + the scoring lock are per-user, so one user's scoring
+        # never blocks another's and each polls only their own counters.
+        async with app.state.run_registry.lock(run_key):
+            slot = app.state.run_registry.slot(run_key)
             matcher = matcher or app.state.matcher
             if not matcher:
                 logger.warning("Matcher not available, skipping scoring")
@@ -473,7 +536,7 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
             total = len(all_unscored)
             if total == 0:
                 return
-            app.state.scoring_progress = {"scored": 0, "total": total, "active": True}
+            slot["scoring_progress"] = {"scored": 0, "total": total, "active": True}
             scored = 0
             empty_batches = 0
             batch_size = 5
@@ -493,18 +556,19 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
                             r["job_id"], r["score"], r["reasons"],
                             r["concerns"], r["keywords"],
                             role_match=r.get("role_match", True),
+                            model=getattr(getattr(matcher, "client", None), "model", None),
                         )
                         await asyncio.sleep(0)  # Yield between DB writes
                         job = await db.get_job(r["job_id"])
                         if job:
                             await _check_high_score_alerts(db, r["job_id"], r["score"], job["title"], job["company"])
                     scored += len(results)
-                    app.state.scoring_progress = {"scored": scored, "total": total, "active": True}
+                    slot["scoring_progress"] = {"scored": scored, "total": total, "active": True}
                     logger.info(f"Scored {scored}/{total} jobs")
                     # Yield to event loop between batches — give API requests time to process
                     await asyncio.sleep(0.5)
             finally:
-                app.state.scoring_progress = {"scored": scored, "total": total, "active": False}
+                slot["scoring_progress"] = {"scored": scored, "total": total, "active": False}
                 logger.info(f"Scoring complete: {scored}/{total} jobs")
 
     async def _reinit_ai_services(client: AIClient | None, resume_text: str = ""):
@@ -581,8 +645,9 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
     # resume text). The app.state defaults are the admin's (bootstrap safety).
     _user_ai_cache: dict[int, dict] = {}
 
-    async def _ai_state_for(request: Request) -> dict:
-        ws = getattr(request.state, "workspace", None)
+    async def _ai_state_for_workspace(ws) -> dict:
+        """Per-workspace AI state. Split out of the request path so the N2
+        scheduler can build a user's matcher/tailor/evidence WITHOUT a request."""
         if ws is None:
             # No workspace (unauthenticated/testing paths): app-level defaults.
             # getattr — test apps never run lifespan, so attrs may be unset.
@@ -643,6 +708,10 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
         _user_ai_cache[key] = state
         return state
 
+    async def _ai_state_for(request: Request) -> dict:
+        return await _ai_state_for_workspace(getattr(request.state, "workspace", None))
+
+    app.state.ai_state_for_workspace = _ai_state_for_workspace
     app.state.ai_state_for = _ai_state_for
 
     # --- Register routers ---

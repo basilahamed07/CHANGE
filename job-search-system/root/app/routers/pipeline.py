@@ -109,24 +109,10 @@ async def draft_email(request: Request, job_id: int):
     return {"job_id": job_id, "email": email}
 
 
-@router.post("/jobs/{job_id}/send-email")
-async def send_job_email(request: Request, job_id: int):
-    from app.emailer import send_application_email
-    db = _db(request)
-    email_settings = await db.get_email_settings()
-    if not email_settings or not email_settings.get("smtp_host"):
-        raise HTTPException(400, "SMTP not configured")
-    application = await db.get_application(job_id)
-    if not application or not application.get("email_draft"):
-        raise HTTPException(400, "No email draft for this job")
-    email_draft = json.loads(application["email_draft"])
-    success = await send_application_email(email_settings, email_draft)
-    if not success:
-        raise HTTPException(500, "Failed to send email")
-    await db.add_event(job_id, "email_sent", f"Email sent to {email_draft.get('to', '')}")
-    return {"ok": True, "message": "Email sent"}
-
-
+# Send capability intentionally removed — jobagent is draft-only.
+# There is no endpoint that sends an application email. Drafts are stored and
+# copied/downloaded by the user; nothing here (or anywhere) transmits them.
+# See docs/outreach/OUTREACH_AUDIT.md (O1).
 @router.get("/reminders")
 async def get_reminders(request: Request, status: str = Query(None)):
     reminders = await _db(request).get_reminders(status=status, include_job=True)

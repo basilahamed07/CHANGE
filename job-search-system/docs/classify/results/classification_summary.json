@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-01T09:51:31+00:00",
+  "generated_at": "2026-10-02T19:47:28+00:00",
   "source_pool": "docs/discovery/results/countries/*.json#sample_jobs",
   "note": "sweep artifacts carry no description, so the DESCRIPTION tier is exercised by the curated battery + unit suite, not the live rows. AI_FALLBACK is 0 by construction (deterministic chain, ai_client=None).",
   "curated": {

@@ -207,9 +207,15 @@ def test_draft_application_email_no_recipient():
 
 
 @pytest.mark.asyncio
-async def test_send_job_email_no_smtp(client):
+async def test_send_job_email_endpoint_is_removed(client):
+    """P0 regression: /api/jobs/{id}/send-email must not exist at all.
+
+    This endpoint used to send real mail over SMTP with no approval gate.
+    jobagent is draft-only, so the route was deleted rather than gated. Only
+    a 404 proves the handler is gone — 400/500 would mean one still exists.
+    """
     resp = await client.post("/api/jobs/999/send-email")
-    assert resp.status_code == 400
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -230,3 +236,27 @@ async def test_test_email_endpoint(client):
 async def test_digest_send_test_endpoint_no_config(client):
     resp = await client.post("/api/digest/send-test")
     assert resp.status_code == 400
+
+
+# --- jobagent is draft-only: no application-email send path may exist ---------
+
+
+def test_no_send_email_route_is_registered(app):
+    """Structural guard: no route may send an application email.
+
+    The removed endpoint was the only ungated sender in the app. This fails if
+    anyone re-adds it (or a similarly named one) under any HTTP method.
+    """
+    offenders = [
+        f"{sorted(r.methods)} {r.path}"
+        for r in app.routes
+        if "send-email" in getattr(r, "path", "").lower().replace("_", "-")
+    ]
+    assert offenders == [], f"application-email send route(s) present: {offenders}"
+
+
+def test_emailer_has_no_application_send_helper():
+    """The send helper itself is gone, not just its route."""
+    import app.emailer as emailer
+
+    assert not hasattr(emailer, "send_application_email")

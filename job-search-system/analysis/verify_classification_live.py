@@ -33,6 +33,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / "root"
 sys.path.insert(0, str(ROOT))
 
+# Windows consoles default to cp1252; the report prints non-ASCII (→, —) and
+# would die with UnicodeEncodeError *after* doing all the work. Force UTF-8.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 from app.classification import classify_job, detect_conflict  # noqa: E402
 from app.config import get_settings                          # noqa: E402
 from app.country_registry import CountryRegistry             # noqa: E402

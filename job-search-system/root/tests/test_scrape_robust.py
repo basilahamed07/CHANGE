@@ -87,6 +87,13 @@ async def _wait_for(predicate, timeout=5.0, interval=0.02):
     return False
 
 
+def _slot(app):
+    """N3: run state is per-user. These tests call the API unauthenticated, so
+    they read the ANON slot the router writes for them."""
+    from app.run_state import ANON
+    return app.state.run_registry.slot(ANON)
+
+
 # ---------------------------------------------------------------------------
 # Task #2: per-scraper timeout
 # ---------------------------------------------------------------------------
@@ -140,6 +147,12 @@ async def test_scrape_heartbeat_updates(db):
         "last_updated_at": time.monotonic(),
     }
     start_hb = progress["last_updated_at"]
+    # Windows' monotonic clock is coarse (~15.6ms). The fake cycle can start and
+    # finish inside a single tick, so the heartbeat read can equal `start_hb` and
+    # the `>` assertion fails at random under load. Wait for a real tick first —
+    # this keeps the assertion strict without depending on cycle duration.
+    while time.monotonic() == start_hb:
+        await asyncio.sleep(0.005)
     await run_scrape_cycle(
         db, [_FastFakeScraper()], search_terms=[], progress=progress, force=True
     )
@@ -180,7 +193,7 @@ async def test_scrape_concurrent_click_returns_409(app, client, monkeypatch):
     assert body["task_id"] == first_task_id
 
     gate.set()
-    await asyncio.wait_for(app.state.scrape_task, timeout=5.0)
+    await asyncio.wait_for(_slot(app)["scrape_task"], timeout=5.0)
 
 
 # ---------------------------------------------------------------------------
@@ -212,11 +225,11 @@ async def test_scrape_cancel(app, client, monkeypatch):
     assert cancel.json() == {"cancelled": True}
 
     try:
-        await asyncio.wait_for(app.state.scrape_task, timeout=5.0)
+        await asyncio.wait_for(_slot(app)["scrape_task"], timeout=5.0)
     except asyncio.CancelledError:
         pass
 
-    progress = app.state.scrape_progress
+    progress = _slot(app)["scrape_progress"]
     assert progress["phase"] == "error"
     assert progress["active"] is False
     assert "Cancelled by user" in progress["errors"]
@@ -240,7 +253,7 @@ async def test_scrape_phase_transitions(app, client, monkeypatch):
     observed_phases: list[str] = []
 
     def _record_phase():
-        p = app.state.scrape_progress
+        p = _slot(app)["scrape_progress"]
         if p and p["phase"] not in observed_phases:
             observed_phases.append(p["phase"])
 
@@ -262,10 +275,10 @@ async def test_scrape_phase_transitions(app, client, monkeypatch):
     resp = await client.post("/api/scrape")
     assert resp.status_code == 202
 
-    await asyncio.wait_for(app.state.scrape_task, timeout=5.0)
+    await asyncio.wait_for(_slot(app)["scrape_task"], timeout=5.0)
 
     assert observed_phases[:3] == ["scraping", "enriching", "classifying"]
-    progress = app.state.scrape_progress
+    progress = _slot(app)["scrape_progress"]
     assert progress["phase"] == "done"
     assert progress["active"] is False
     # ai_client is None in testing → skipped
@@ -285,14 +298,14 @@ async def test_scrape_premature_done_regression(app, client, monkeypatch):
     seen = []
 
     async def _scrape(*args, **kwargs):
-        seen.append(("scraping", app.state.scrape_progress["active"]))
+        seen.append(("scraping", _slot(app)["scrape_progress"]["active"]))
 
     async def _enrich(*args, **kwargs):
-        seen.append(("enriching", app.state.scrape_progress["active"]))
+        seen.append(("enriching", _slot(app)["scrape_progress"]["active"]))
         return 0
 
     async def _classify(*args, **kwargs):
-        seen.append(("classifying", app.state.scrape_progress["active"]))
+        seen.append(("classifying", _slot(app)["scrape_progress"]["active"]))
         return 0
 
     monkeypatch.setattr(scraping_router, "run_scrape_cycle", _scrape)
@@ -301,12 +314,12 @@ async def test_scrape_premature_done_regression(app, client, monkeypatch):
 
     resp = await client.post("/api/scrape")
     assert resp.status_code == 202
-    await asyncio.wait_for(app.state.scrape_task, timeout=5.0)
+    await asyncio.wait_for(_slot(app)["scrape_task"], timeout=5.0)
 
     assert [name for name, _ in seen] == ["scraping", "enriching", "classifying"]
     assert all(active is True for _, active in seen)
-    assert app.state.scrape_progress["active"] is False
-    assert app.state.scrape_progress["phase"] == "done"
+    assert _slot(app)["scrape_progress"]["active"] is False
+    assert _slot(app)["scrape_progress"]["phase"] == "done"
 
 
 # ---------------------------------------------------------------------------
@@ -332,9 +345,9 @@ async def test_scrape_error_in_phase(app, client, monkeypatch):
 
     resp = await client.post("/api/scrape")
     assert resp.status_code == 202
-    await asyncio.wait_for(app.state.scrape_task, timeout=5.0)
+    await asyncio.wait_for(_slot(app)["scrape_task"], timeout=5.0)
 
-    progress = app.state.scrape_progress
+    progress = _slot(app)["scrape_progress"]
     assert progress["phase"] == "error"
     assert progress["active"] is False
     assert any("enrichment exploded" in e or "RuntimeError" in e for e in progress["errors"])
@@ -393,4 +406,4 @@ async def test_progress_includes_server_now_and_task_id(app, client, monkeypatch
     assert body["last_updated_at"] is not None
 
     gate.set()
-    await asyncio.wait_for(app.state.scrape_task, timeout=5.0)
+    await asyncio.wait_for(_slot(app)["scrape_task"], timeout=5.0)

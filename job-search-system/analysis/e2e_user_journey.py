@@ -1108,16 +1108,23 @@ async def s21_crm(j: Journey) -> None:
                     label="move the job to 'applied' (validated transition)")
     # The engine deliberately ALLOWS forward skips inside the pipeline (an
     # off-platform application/offer is real) but forbids landing on 'offered'
-    # from a job that was never applied to. Probe that on an untouched job.
-    probe_job = j.extra_job_id or j.user_job_id
-    r2 = await j.api(j.user, "POST",
-                     f"/api/jobs/{probe_job}/status?to_status=offered",
-                     check=False, expect=None,
-                     label="'offered' without ever applying (must be refused)")
-    refused = r2.status is not None and (r2.status >= 400 or (
-        isinstance(r2.body, dict) and r2.body.get("ok") is False))
-    j.check("unearned 'offered' is blocked by the engine", refused,
-            f"status={r2.status} body={json.dumps(r2.body, default=str)[:160]}")
+    # from a job that was never applied to. That probe MUST use an untouched
+    # job: `user_job_id` is moved to 'applied' above, so falling back to it
+    # would demand a refusal the engine correctly does not give (and would
+    # report a false FAIL whenever the pool is too small to hold a second job).
+    probe_job = j.extra_job_id
+    if probe_job:
+        r2 = await j.api(j.user, "POST",
+                         f"/api/jobs/{probe_job}/status?to_status=offered",
+                         check=False, expect=None,
+                         label="'offered' without ever applying (must be refused)")
+        refused = r2.status is not None and (r2.status >= 400 or (
+            isinstance(r2.body, dict) and r2.body.get("ok") is False))
+        j.check("unearned 'offered' is blocked by the engine", refused,
+                f"status={r2.status} body={json.dumps(r2.body, default=str)[:160]}")
+    else:
+        j.note("skipped 'unearned offered' probe — no untouched second job in "
+               "the pool (usually a shortened scrape/discovery budget)")
     r3 = await j.api(j.user, "POST", "/api/crm/followups/run", expect=(200,),
                      label="run the follow-up engine")
     if isinstance(r3.body, dict):
@@ -1891,9 +1898,17 @@ async def run_journey(args) -> int:
         [s.to_dict() for s in j.rec.scenarios], indent=2), encoding="utf-8")
 
     # Publish the report next to the other milestone reports (Golden Rule #11).
+    # Only a FULL-BUDGET run may replace the canonical report: a shortened
+    # diagnostic run would otherwise overwrite the definitive result and make
+    # the repo look worse than reality. The full copy always stays in run_dir.
     docs = ROOT.parent / "docs"
     docs.mkdir(exist_ok=True)
-    (docs / "USER_JOURNEY_E2E_REPORT.md").write_text(report, encoding="utf-8")
+    if SCRAPE_SECS >= 240 and DISCOVERY_SECS >= 300:
+        (docs / "USER_JOURNEY_E2E_REPORT.md").write_text(report, encoding="utf-8")
+    else:
+        log(f"NOTE: shortened budgets (scrape={SCRAPE_SECS}s discovery={DISCOVERY_SECS}s) "
+            "— canonical docs/USER_JOURNEY_E2E_REPORT.md left untouched; this run's "
+            f"report is {run_dir / 'report.md'}")
 
     log("\n" + "=" * 74)
     log(f"SCENARIOS : {passed} passed / {failed} failed")
@@ -1905,6 +1920,13 @@ async def run_journey(args) -> int:
 
 
 def main() -> int:
+    # Windows consoles default to cp1252, which cannot encode the tick/cross
+    # glyphs the report prints — the harness used to crash right after boot.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, OSError, ValueError):
+            pass
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--only", nargs="*", help="run only these scenario ids")
     args = ap.parse_args()

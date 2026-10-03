@@ -17,6 +17,7 @@ from app.scheduler import (
 )
 from app.scrapers import ALL_SCRAPERS
 from app.main import _db  # M15b: per-user workspace DB
+from app.run_state import MAX_CONCURRENT_SCRAPES_PER_IP, run_slot, user_key
 from app.search_gate import require_resume_for_search
 
 logger = logging.getLogger(__name__)
@@ -56,8 +57,8 @@ def _set_phase(
     progress["last_updated_at"] = time.monotonic()
 
 
-def _mirror_scoring_once(app, progress: dict) -> None:
-    sp = getattr(app.state, "scoring_progress", None)
+def _mirror_scoring_once(slot: dict, progress: dict) -> None:
+    sp = slot.get("scoring_progress")
     if not sp:
         return
     progress["scoring"] = {
@@ -68,11 +69,11 @@ def _mirror_scoring_once(app, progress: dict) -> None:
     progress["last_updated_at"] = time.monotonic()
 
 
-async def _mirror_scoring_progress(app, progress: dict) -> None:
+async def _mirror_scoring_progress(slot: dict, progress: dict) -> None:
     try:
         while True:
             await asyncio.sleep(1.0)
-            _mirror_scoring_once(app, progress)
+            _mirror_scoring_once(slot, progress)
     except asyncio.CancelledError:
         raise
 
@@ -99,9 +100,10 @@ async def _task_target(request: Request):
     return db, matcher
 
 
-async def _scrape_and_score(app, task_id: str, db=None, matcher=None) -> None:
+async def _scrape_and_score(app, task_id: str, db=None, matcher=None,
+                            slot=None, run_key="anon", ip=None) -> None:
     """Phase pipeline. Router owns phase/active — scheduler only updates counters."""
-    progress = app.state.scrape_progress
+    progress = slot["scrape_progress"]
     bg_db = db if db is not None else app.state.bg_db
     mirror_task: asyncio.Task | None = None
     try:
@@ -138,11 +140,12 @@ async def _scrape_and_score(app, task_id: str, db=None, matcher=None) -> None:
             if reachable:
                 _set_phase(progress, "scoring", current="Scoring jobs")
                 mirror_task = asyncio.create_task(
-                    _mirror_scoring_progress(app, progress)
+                    _mirror_scoring_progress(slot, progress)
                 )
                 try:
                     await asyncio.wait_for(
-                        app.state.score_unscored(bg_db, matcher), timeout=1800
+                        app.state.score_unscored(bg_db, matcher, run_key=run_key),
+                        timeout=1800
                     )
                 finally:
                     if mirror_task and not mirror_task.done():
@@ -152,7 +155,7 @@ async def _scrape_and_score(app, task_id: str, db=None, matcher=None) -> None:
                         except (asyncio.CancelledError, Exception):
                             pass
                     mirror_task = None
-                    _mirror_scoring_once(app, progress)
+                    _mirror_scoring_once(slot, progress)
             else:
                 progress["scoring"]["skipped_reason"] = detail
                 progress["last_updated_at"] = time.monotonic()
@@ -271,7 +274,8 @@ async def trigger_scrape(request: Request):
     # with hardcoded defaults. 428 so the frontend can distinguish this from the
     # 409 "already running" case.
     await require_resume_for_search(request)
-    progress = app.state.scrape_progress
+    slot = run_slot(request)
+    progress = slot["scrape_progress"]
     if progress and progress.get("active"):
         return JSONResponse(
             {
@@ -281,11 +285,40 @@ async def trigger_scrape(request: Request):
             status_code=409,
         )
 
+    # N3: per-IP advisory cap. One host launching N concurrent scrape storms is
+    # the realistic abuse/accident case; the cap is advisory (per-process) and
+    # the over-cap caller gets an honest 429 instead of a silent no-op.
+    ip = request.client.host if request.client else None
+    if app.state.run_registry.ip_active(ip) >= MAX_CONCURRENT_SCRAPES_PER_IP:
+        return JSONResponse(
+            {
+                "error": "too_many_concurrent_scrapes",
+                "detail": (
+                    f"This host already has {MAX_CONCURRENT_SCRAPES_PER_IP} "
+                    "scrapes running. Wait for one to finish."
+                ),
+            },
+            status_code=429,
+        )
+
     task_id = uuid.uuid4().hex
     db, matcher = await _task_target(request)
-    app.state.scrape_progress = _fresh_state(task_id)
-    app.state.scrape_task = asyncio.create_task(
-        _scrape_and_score(app, task_id, db, matcher))
+    run_key = user_key(request)
+    registry = app.state.run_registry
+    slot["scrape_progress"] = _fresh_state(task_id)
+    registry.ip_enter(ip)
+
+    async def _guarded_run():
+        # The per-IP slot MUST be released by this wrapper, not by
+        # _scrape_and_score: tests and future callers replace that coroutine,
+        # and a leaked count would 429 the next legitimate scrape forever.
+        try:
+            await _scrape_and_score(app, task_id, db, matcher,
+                                    slot=slot, run_key=run_key, ip=ip)
+        finally:
+            registry.ip_exit(ip)
+
+    slot["scrape_task"] = asyncio.create_task(_guarded_run())
     return JSONResponse(
         {"task_id": task_id, "status": "started"},
         status_code=202,
@@ -294,9 +327,9 @@ async def trigger_scrape(request: Request):
 
 @router.post("/scrape/cancel")
 async def cancel_scrape(request: Request):
-    app = request.app
-    task = getattr(app.state, "scrape_task", None)
-    progress = app.state.scrape_progress
+    slot = run_slot(request)
+    task = slot["scrape_task"]
+    progress = slot["scrape_progress"]
     if not progress or not progress.get("active") or not task or task.done():
         return JSONResponse(
             {"error": "no_active_scrape"},
@@ -308,7 +341,7 @@ async def cancel_scrape(request: Request):
 
 @router.get("/scrape/progress")
 async def scrape_progress(request: Request):
-    progress = request.app.state.scrape_progress
+    progress = run_slot(request)["scrape_progress"]
     now = time.monotonic()
     if not progress:
         return {
@@ -343,11 +376,13 @@ async def trigger_score(request: Request):
         return {"status": "skipped", "reason": "No AI provider configured. Go to Settings → AI to set one up."}
 
     db, matcher = await _task_target(request)
+    run_key = user_key(request)
 
     async def _run_scoring():
         try:
             await asyncio.wait_for(
-                app.state.score_unscored(db, matcher), timeout=1800
+                app.state.score_unscored(db, matcher, run_key=run_key),
+                timeout=1800
             )
         except asyncio.TimeoutError:
             logger.error("Background scoring timed out after 30 minutes")
@@ -360,7 +395,7 @@ async def trigger_score(request: Request):
 
 @router.get("/score/progress")
 async def score_progress(request: Request):
-    progress = request.app.state.scoring_progress
+    progress = run_slot(request)["scoring_progress"]
     if not progress:
         return {"active": False, "scored": 0, "total": 0}
     return progress
@@ -373,11 +408,13 @@ async def rescore_failed(request: Request):
     bg_db = _db(request)
     cleared = await bg_db.clear_failed_scores()
     db, matcher = await _task_target(request)
+    run_key = user_key(request)
     if cleared and getattr(app.state, "ai_client", None):
         async def _run_rescore():
             try:
                 await asyncio.wait_for(
-                    app.state.score_unscored(db, matcher), timeout=1800
+                    app.state.score_unscored(db, matcher, run_key=run_key),
+                    timeout=1800
                 )
             except asyncio.TimeoutError:
                 logger.error("Background rescoring timed out")
@@ -394,12 +431,14 @@ async def rescore_all(request: Request):
     bg_db = _db(request)
     cleared = await bg_db.clear_all_scores()
     db, matcher = await _task_target(request)
+    run_key = user_key(request)
     has_ai = getattr(app.state, "ai_client", None) is not None
     if cleared and has_ai:
         async def _run_rescore():
             try:
                 await asyncio.wait_for(
-                    app.state.score_unscored(db, matcher), timeout=3600
+                    app.state.score_unscored(db, matcher, run_key=run_key),
+                    timeout=3600
                 )
             except asyncio.TimeoutError:
                 logger.error("Full rescoring timed out after 1h")

@@ -30,6 +30,9 @@ class Settings(BaseSettings):
 
     # --- Scheduling ---
     scrape_interval_hours: int = 6
+    # N2: seconds between per-user scheduled runs, so N users' cycles do not
+    # hammer the same job sources at the same instant from one host.
+    scheduler_user_stagger_seconds: float = 5.0
 
     # --- Salary filters (fallback; country YAML overrides per-country) ---
     min_salary: int = 150000

@@ -12,6 +12,28 @@ cd job-search-system/root
 ```
 Machine-readable output: `docs/eligibility/results/eligibility_summary.json`.
 
+> ## 🔄 Re-run 2026-10-03 — the live DB has moved
+>
+> The verifier originally read `data/users/1-basil/jobagent.db`. On this deployment that workspace DB
+> now holds **0 jobs** (it holds the resume/profile instead) and the job rows live in
+> `data/jobagent.db` (1,245 jobs). The verifier now picks whichever DB actually holds jobs, and it was
+> re-run against the current data:
+>
+> ```
+> Stage-2 classified 42 newly-unclassified jobs; Stage-3 evaluated 1244 jobs
+> evaluated=1244  ELIGIBLE=26  INELIGIBLE=1201  REVIEW_REQUIRED=17  UNKNOWN=0
+> by gate:    {'FRESHNESS': 112, 'DISMISSED': 1105, 'FINAL_ELIGIBILITY': 26, 'EVIDENCE': 1}
+> top reasons {'DISMISSED_BY_COUNTRY_STRATEGY': 840, 'DISMISSED': 265,
+>              'STALE_POSTED_DATE': 95, 'OK': 26, 'POSTED_DATE_UNKNOWN': 17,
+>              'MISSING_DESCRIPTION': 1}
+> ```
+>
+> The numbers below describe the earlier 1,996-job run and are kept as history. The **gate chain
+> behaves identically** — `DATE_UNKNOWN` still lands in REVIEW_REQUIRED (17), stale dates still fail
+> FRESHNESS (95), and the country strategy still governs the pool (840). The eligible count differs
+> only because the underlying job set differs. `results/eligibility_summary.json` now holds the
+> 2026-10-03 run.
+
 > **Superseded for reason/status labels by `QUALITY_AUDIT.md` (2026-10-01).**
 > This file records the *first* live run, before two audit fixes: the
 > salary-floor reason is now `SALARY_BELOW_FLOOR` (was
