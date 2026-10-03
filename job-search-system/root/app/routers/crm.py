@@ -167,29 +167,202 @@ async def daily_run_trigger(request: Request):
     Honors approval matrix: packages born ready_for_review, outreach
     DRAFT-ONLY. Never sends.
     """
-    from app.daily_run import DailyRun
+    import os
+    from fastapi import HTTPException
+    from app.daily_run import DailyRun, select_candidates
     db = _db(request)
     runner = DailyRun(db)
+
+    def _short_error(exc: Exception) -> str:
+        detail = getattr(exc, "detail", None)
+        return str(detail if detail is not None else exc)[:300]
+
+    async def _discover(report, stage):
+        from app.adapters import ALL_ADAPTERS
+        from app.discovery import run_discovery_cycle
+        from app.routers.discovery import _env_scraper_keys
+        from app.search_gate import require_resume_for_search
+        await require_resume_for_search(request)
+        registry = getattr(request.app.state, "country_registry", None)
+        if not registry or not registry.enabled_countries():
+            return {"skipped": True, "reason": "no_countries_enabled",
+                    "shortfall_reasons": ["NO_ELIGIBLE_JOBS"]}
+        keys = await db.get_scraper_keys()
+        for name, entry in _env_scraper_keys().items():
+            keys.setdefault(name, entry)
+        max_passes = int(os.getenv("JOBAGENT_DAILY_DISCOVERY_PASSES", "4"))
+        telemetry = await run_discovery_cycle(
+            db, registry, ALL_ADAPTERS,
+            max_passes=max(1, min(max_passes, 50)),
+            scraper_keys=keys,
+        )
+        reasons = []
+        if telemetry.get("new_jobs", 0) == 0:
+            reasons.append("SOURCES_EXHAUSTED")
+        if telemetry.get("budget_exhausted"):
+            reasons.append("RATE_LIMITED")
+        return {"new_jobs": telemetry.get("new_jobs", 0),
+                "pass_budget": telemetry.get("pass_budget"),
+                "budget_exhausted": telemetry.get("budget_exhausted", False),
+                "shortfall_reasons": reasons}
+
+    async def _classify(report, stage):
+        from app.scheduler import run_location_classification
+        ai = await request.app.state.ai_state_for(request)
+        n = await run_location_classification(db, ai_client=ai.get("client"))
+        return {"classified": n}
+
+    async def _eligibility(report, stage):
+        from app.scheduler import run_eligibility_pass
+        n = await run_eligibility_pass(
+            db, getattr(request.app.state, "country_registry", None))
+        return {"evaluated": n,
+                "shortfall_reasons": ["NO_ELIGIBLE_JOBS"] if n == 0 else []}
+
+    async def _score(report, stage):
+        ai = await request.app.state.ai_state_for(request)
+        matcher = ai.get("matcher")
+        if not matcher:
+            return {"scored": 0, "shortfall_reasons": ["NO_AI_PROVIDER"]}
+        before = len(await db.get_scoreable_jobs(limit=10000))
+        await request.app.state.score_unscored(
+            db, matcher=matcher,
+            run_key=f"daily-run:{id(getattr(request.state, 'workspace', None))}")
+        after = len(await db.get_scoreable_jobs(limit=10000))
+        scored = max(0, before - after)
+        reasons = ["AI_QUOTA_EXHAUSTED"] if before and scored == 0 else []
+        return {"eligible_before": before, "scored": scored,
+                "eligible_after": after, "shortfall_reasons": reasons}
+
+    async def _hybrid_score(report, stage):
+        from app.matching_service import score_all_unscored
+        from app.routers.matching import _hybrid_state
+        return await score_all_unscored(await _hybrid_state(request), db)
     # Minimal stage set for the API path: compute what's computable now.
     # Discovery/scoring remain on the scheduler cycle; this closes the loop
     # from already-scored pool to packages + follow-ups + report.
     async def _select(report, stage):
-        rows = await db.get_top_unpackaged_jobs(cutoff=60, limit=max(0, report.daily_target))
-        stage.detail["selected"] = len(rows)
-        if len(rows) < report.daily_target:
-            stage.detail["shortfall_reasons"] = ["ALL_SCORED_BELOW_CUTOFF"]
-        return {"job_ids": [r["job_id"] for r in rows]}
+        result = await select_candidates(
+            db, cutoff=runner.score_cutoff, limit=max(0, report.daily_target))
+        if result["selected"] < report.daily_target:
+            result["shortfall_reasons"] = (
+                ["NO_ELIGIBLE_JOBS"] if result["selected"] == 0
+                else ["ALL_SCORED_BELOW_CUTOFF"])
+        return result
+
+    async def _research(report, stage):
+        from app.contact_providers import ContactResearchService, workspace_provider_chain
+        selected = report.stage("select").detail.get("job_ids") or [
+            r["job_id"] for r in await db.get_top_unpackaged_jobs(
+                cutoff=runner.score_cutoff, limit=report.daily_target)
+        ]
+        service = ContactResearchService(db, await workspace_provider_chain(db))
+        found = errors = 0
+        results = []
+        for job_id in selected:
+            job = await db.get_job(job_id)
+            if not job:
+                continue
+            result = await service.research(job)
+            results.append({"job_id": job_id, "status": result.get("status"),
+                            "provider": result.get("provider")})
+            found += 1 if result.get("status") == "found" else 0
+            errors += 1 if result.get("status") == "error" else 0
+        return {"researched": len(results), "found": found, "errors": errors,
+                "jobs": results}
+
     async def _packages(report, stage):
         # Real package build requires AI + evidence gate — out of scope for
         # the trigger path; report what's pending instead of half-building.
         pending = await db.get_top_unpackaged_jobs(cutoff=60, limit=50)
         return {"pending_packages": len(pending),
                 "note": "build via POST /api/packages/build per job"}
+    async def _packages(report, stage):
+        from app.routers.packages import build_package
+        from app.routers.tailoring import prepare_application
+        selected = report.stage("select").detail.get("job_ids") or [
+            r["job_id"] for r in await db.get_top_unpackaged_jobs(
+                cutoff=runner.score_cutoff, limit=report.daily_target)
+        ]
+        built = prepared = evidence_failures = package_errors = 0
+        results = []
+        for job_id in selected:
+            try:
+                if not await db.get_application(job_id):
+                    await prepare_application(request, job_id)
+                    prepared += 1
+                result = await build_package(request, job_id)
+                built += 1
+                results.append({"job_id": job_id, "status": "built",
+                                "action": result.get("action")})
+            except HTTPException as exc:
+                code = getattr(exc, "status_code", 500)
+                if code == 422:
+                    evidence_failures += 1
+                else:
+                    package_errors += 1
+                results.append({"job_id": job_id, "status": "failed",
+                                "code": code, "error": _short_error(exc)})
+            except Exception as exc:  # noqa: BLE001
+                package_errors += 1
+                logger.exception("Daily package build failed for job %s", job_id)
+                results.append({"job_id": job_id, "status": "failed",
+                                "error": _short_error(exc)})
+        reasons = []
+        if evidence_failures:
+            reasons.append("EVIDENCE_GATE")
+        if package_errors:
+            reasons.append("PACKAGE_ERROR")
+        return {"selected": len(selected), "prepared": prepared, "built": built,
+                "results": results, "shortfall_reasons": reasons}
+
+    async def _outreach(report, stage):
+        from app.outreach import GmailProvider, OutreachService, load_sequences
+        from app.routers.outreach import _gmail_credential
+        token, source = await _gmail_credential(request)
+        sequences, limits, identity = load_sequences()
+        service = OutreachService(
+            db, sequences, limits, identity, GmailProvider(token=token))
+        selected = report.stage("select").detail.get("job_ids") or []
+        created = existing = capped = failed = 0
+        results = []
+        for job_id in selected:
+            app_row = await db.get_application(job_id)
+            if not app_row or not app_row.get("package_dir"):
+                continue
+            try:
+                result = await service.create_outreach(job_id)
+                status = result.get("status")
+                created += 1 if status == "created" else 0
+                existing += 1 if status == "already_exists" else 0
+                capped += 1 if status == "capped" else 0
+                results.append({"job_id": job_id, "status": status})
+            except Exception as exc:  # noqa: BLE001
+                failed += 1
+                results.append({"job_id": job_id, "status": "failed",
+                                "error": _short_error(exc)})
+        return {"created": created, "already_exists": existing,
+                "capped": capped, "failed": failed,
+                "gmail_source": source, "jobs": results}
+
+    async def _digest(report, stage):
+        from app.digest import generate_digest
+        digest = await generate_digest(db, min_score=runner.score_cutoff)
+        return {"subject": digest.get("subject"),
+                "job_count": digest.get("job_count"),
+                "outcome": digest.get("outcome")}
+
     report = await runner.run({
+        "discover": _discover,
+        "classify": _classify,
+        "eligibility": _eligibility,
+        "score": _score,
+        "hybrid_score": _hybrid_score,
         "select": _select,
+        "research": _research,
         "packages": _packages,
-        "outreach": None,
-        "digest": None,
+        "outreach": _outreach,
+        "digest": _digest,
     })
     return report.to_dict()
 

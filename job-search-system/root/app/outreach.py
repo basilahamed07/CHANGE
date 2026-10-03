@@ -140,6 +140,7 @@ class GmailProvider:
     name = "gmail"
     DRAFTS_URL = "https://gmail.googleapis.com/gmail/v1/users/me/drafts"
     THREADS_URL = "https://gmail.googleapis.com/gmail/v1/users/me/threads"
+    _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[A-Za-z]{2,}")
 
     def __init__(self, token: str = ""):
         self.token = token or os.getenv("JOBAGENT_GMAIL_TOKEN", "")
@@ -180,23 +181,82 @@ class GmailProvider:
         return {"id": data.get("id", ""), "provider": "gmail",
                 "thread_id": (data.get("message") or {}).get("threadId", "")}
 
-    async def find_existing_draft(self, subject: str) -> dict | None:
-        """Thread-level dedup: look for an existing draft with this subject."""
+    async def _api_get(self, url: str, params: dict) -> dict | None:
+        """GET against the Gmail API. Parsed JSON, or None on ANY failure.
+
+        Kept as one seam so tests can stub the network without httpx mocks.
+        """
         import httpx
-        if not self.available:
-            return None
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.get(
-                    self.DRAFTS_URL,
-                    params={"q": f"subject:{subject}"},
+                    url, params=params,
                     headers={"Authorization": f"Bearer {self.token}"})
                 resp.raise_for_status()
-                drafts = resp.json().get("drafts", []) or []
-            return drafts[0] if drafts else None
+                data = resp.json()
+            return data if isinstance(data, dict) else None
         except Exception as e:
-            logger.warning("Gmail draft lookup failed (dedup degrades to DB): %s", e)
+            logger.warning("Gmail API lookup failed (dedup degrades to DB): %s", e)
             return None
+
+    @classmethod
+    def _build_query(cls, subject: str, to: str) -> str:
+        """Gmail search query scoped by subject AND recipient (see O2)."""
+        clean = (subject or "").replace('"', " ").strip()
+        q = f'subject:"{clean}"'
+        recipient = (to or "").strip()
+        if recipient:
+            addr = cls._EMAIL_RE.findall(recipient)
+            q += f" to:{addr[0] if addr else recipient}"
+        return q
+
+    @classmethod
+    def _headers_match(cls, headers: dict, subject: str, to: str) -> bool:
+        """A draft may be adopted ONLY if its To/Subject headers match.
+
+        O2: subject-only dedup let job B adopt job A's draft, so B never got
+        its own draft. Verification is fail-closed: any doubt -> no adoption
+        (a duplicate draft is recoverable; a mislinked draft_id is not).
+        """
+        if (headers.get("subject") or "").strip() != (subject or "").strip():
+            return False
+        if not to:
+            return True
+        want = cls._EMAIL_RE.findall(to)
+        have = cls._EMAIL_RE.findall(headers.get("to") or "")
+        if want and have:
+            return {a.lower() for a in want} & {a.lower() for a in have} != set()
+        # No parseable addresses on one side: fall back to a case-insensitive
+        # substring check rather than adopting blind.
+        return bool(to.strip()) and to.strip().lower() in (headers.get("to") or "").lower()
+
+    async def find_existing_draft(self, subject: str, to: str = "") -> dict | None:
+        """Thread-level dedup: adopt an existing draft ONLY when it belongs to
+        this (subject, recipient) pair.
+
+        O2: the old implementation searched the whole mailbox by subject and
+        returned drafts[0], so two jobs rendering the same subject shared one
+        draft id and the second job never got a draft of its own.
+        """
+        if not self.available:
+            return None
+        data = await self._api_get(self.DRAFTS_URL, {"q": self._build_query(subject, to)})
+        if not data:
+            return None
+        for entry in (data.get("drafts") or []):
+            draft_id = (entry or {}).get("id") or ""
+            if not draft_id:
+                continue
+            meta = await self._api_get(
+                f"{self.DRAFTS_URL}/{draft_id}",
+                {"format": "metadata",
+                 "metadataHeaders": ["To", "Subject"]})
+            payload = ((meta or {}).get("message") or {}).get("payload") or {}
+            headers = {(h.get("name") or "").lower(): h.get("value") or ""
+                       for h in (payload.get("headers") or [])}
+            if headers and self._headers_match(headers, subject, to):
+                return entry
+        return None
 
 
 # --------------------------------------------------------------------------
@@ -286,7 +346,8 @@ class OutreachService:
         # --- Provider: Gmail draft (dedup there too) or local fallback -----
         draft_id, provider, thread_id = "", "local", ""
         if to_email:
-            existing_gmail = await self.gmail.find_existing_draft(rendered["subject"])
+            existing_gmail = await self.gmail.find_existing_draft(
+                rendered["subject"], to_email)
             if existing_gmail:
                 draft_id = existing_gmail.get("id", "")
                 provider = "gmail"

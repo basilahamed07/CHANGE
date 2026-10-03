@@ -252,3 +252,116 @@ async def test_outreach_api_create_twice_returns_same(tmp_path):
         assert r.status_code == 200
         assert r.json()["gmail_connected"] is False  # no send capability configured
     await db.close()
+
+
+# ---------------- O2: draft dedup is scoped by subject + recipient ----------------
+
+
+def test_build_query_scopes_by_subject_and_recipient():
+    q = GmailProvider._build_query("AI Engineer at Acme", "Jane <jane@acme.ai>")
+    assert q == 'subject:"AI Engineer at Acme" to:jane@acme.ai'
+    # no recipient -> subject-only (call site only dedups when it has an address)
+    assert GmailProvider._build_query("S", "") == 'subject:"S"'
+    # stray quotes must not break the Gmail query grammar
+    assert '"' not in GmailProvider._build_query('Say "hi"', "a@b.co").split(" ", 1)[0][9:-1]
+
+
+def test_headers_match_requires_same_recipient_and_subject():
+    headers = {"subject": "Role at Acme", "to": "jane@acme.ai"}
+    assert GmailProvider._headers_match(headers, "Role at Acme", "jane@acme.ai")
+    # display-name form and case differences still match
+    assert GmailProvider._headers_match(headers, "Role at Acme", "Jane <JANE@Acme.AI>")
+    # O2 core: same subject, different recipient => NEVER adopt
+    assert not GmailProvider._headers_match(headers, "Role at Acme", "bob@beta.io")
+    # different subject => never adopt either
+    assert not GmailProvider._headers_match(headers, "Other Role", "jane@acme.ai")
+
+
+@pytest.mark.asyncio
+async def test_find_existing_draft_rejects_mismatched_recipient():
+    """Mailbox holds jane's draft; asking about bob's must return None (O2)."""
+    gmail = GmailProvider(token="fake")
+
+    async def _api_get(url, params):
+        if url == GmailProvider.DRAFTS_URL:
+            return {"drafts": [{"id": "d1"}]}
+        return {"message": {"payload": {"headers": [
+            {"name": "To", "value": "jane@acme.ai"},
+            {"name": "Subject", "value": "Same subject"}]}}}
+
+    gmail._api_get = _api_get
+    assert await gmail.find_existing_draft("Same subject", "bob@beta.io") is None
+    assert await gmail.find_existing_draft("Same subject", "jane@acme.ai") == {"id": "d1"}
+    # listing must have been scoped by recipient too
+    queries = []
+
+    async def _spy(url, params):
+        queries.append(params.get("q", ""))
+        return None
+
+    gmail._api_get = _spy
+    await gmail.find_existing_draft("Same subject", "bob@beta.io")
+    assert queries and "to:bob@beta.io" in queries[0]
+
+
+@pytest.mark.asyncio
+async def test_find_existing_draft_fails_closed_when_unverifiable():
+    """No metadata / no listing => no adoption (a dup draft beats a mislink)."""
+    gmail = GmailProvider(token="fake")
+
+    async def _no_metadata(url, params):
+        if url == GmailProvider.DRAFTS_URL:
+            return {"drafts": [{"id": "d1"}]}
+        return None  # header fetch failed
+
+    gmail._api_get = _no_metadata
+    assert await gmail.find_existing_draft("S", "jane@acme.ai") is None
+
+    gmail._api_get = AsyncMock(return_value=None)  # listing failed
+    assert await gmail.find_existing_draft("S", "jane@acme.ai") is None
+
+
+@pytest.mark.asyncio
+async def test_two_jobs_same_subject_get_distinct_drafts(db):
+    """O2 regression: two jobs rendering the SAME subject must each own a draft.
+
+    The mailbox only holds job A's draft. Job B (different recipient) must NOT
+    adopt it — it must create its own draft and store its own draft id.
+    """
+    jid_a = await _mk_job(db, url="https://x/o2a")
+    jid_b = await _mk_job(db, url="https://x/o2b")
+    gmail = GmailProvider(token="fake")
+    queries: list[str] = []
+
+    async def _api_get(url, params):
+        if url == GmailProvider.DRAFTS_URL:            # draft listing
+            q = params.get("q", "")
+            queries.append(q)
+            return {"drafts": [{"id": "draft-A"}]}
+        # metadata: only jane's draft exists, addressed to jane
+        subject = queries[-1].split('subject:"', 1)[1].split('"', 1)[0]
+        return {"message": {"payload": {"headers": [
+            {"name": "To", "value": "jane@acme.ai"},
+            {"name": "Subject", "value": subject}]}}}
+
+    created: list[dict] = []
+
+    async def _create(to, subject, body, thread_hint=""):
+        created.append({"to": to, "subject": subject})
+        return {"id": f"draft-{len(created)}", "provider": "gmail", "thread_id": ""}
+
+    gmail._api_get = _api_get
+    gmail.create_draft = _create
+    service = _seqs_service(db, gmail=gmail)
+
+    ra = await service.create_outreach(jid_a, contact_email="jane@acme.ai")
+    rb = await service.create_outreach(jid_b, contact_email="bob@beta.io")
+
+    # A adopted the verified draft; B created its own — ids must differ
+    assert ra["message"]["draft_id"] == "draft-A"
+    assert rb["message"]["draft_id"] == "draft-1"
+    assert ra["message"]["draft_id"] != rb["message"]["draft_id"]
+    assert len(created) == 1  # only B needed a new draft
+    # both lookups were scoped by recipient
+    assert any("to:jane@acme.ai" in q for q in queries)
+    assert any("to:bob@beta.io" in q for q in queries)

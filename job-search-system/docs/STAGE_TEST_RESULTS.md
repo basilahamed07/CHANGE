@@ -185,3 +185,49 @@ regeneration, provenance recorded, evidence gate green.
 
 Also confirmed: **no orphaned server process** — the harness's ports closed cleanly; port 8085 (PID 500)
 is Basil's pre-existing app server and was left untouched.
+
+---
+
+## 7. P1 closeout + daily-run route proof (2026-10-03)
+
+### Fixed after the prior log
+
+- **Stage-9 O2:** Gmail draft dedup now scopes by subject + recipient and verifies draft metadata headers
+  before adopting. Unverifiable metadata fails closed.
+- **Stage-7 R1:** research provider keys now resolve from the active workspace `scraper_keys` via
+  `workspace_provider_chain(db)`; env remains fallback only.
+- **Stage-7 R2:** provider exceptions are returned as `status="error"` with `provider_errors` and are
+  not cached as seven-day `not_found` rows.
+- **Stage-6 S6:** `POST /api/daily-run/run` now wires all ten stages: discover, classify, eligibility,
+  score, hybrid_score, select, research, packages, outreach, digest.
+
+### Tests run
+
+| Command | Result |
+|---|---|
+| `uv run pytest tests/test_daily_run.py tests/test_contact_providers.py tests/test_outreach.py tests/test_multiuser_real_scenario.py tests/test_application_builder.py tests/test_digest.py -q --timeout=240` | **95 passed** |
+| `uv run pytest -q --timeout=300` | **1280 passed, 1 warning** |
+
+The warning was a Windows asyncio unclosed-transport warning during
+`tests/test_workspaces.py::test_workspace_dirs_and_dbs_are_distinct`; it did not fail the run.
+
+### Focused real-server E2E
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+$env:JOBAGENT_DAILY_DISCOVERY_PASSES='1'
+$env:JOBAGENT_E2E_DISCOVERY_SECS='20'
+$env:JOBAGENT_E2E_SCRAPE_SECS='20'
+uv run python ../analysis/e2e_user_journey.py --only s01_boot s02_bootstrap s04_login s05_admin_creates_user s06_user_workspace_born_empty s07_user_sets_own_ai_key s08_resume_upload_and_grading s10_countries s22_daily_run
+```
+
+Result: **9/9 scenarios, 67/67 checks, 38 HTTP calls**.
+
+Run directory: `analysis/e2e_runs/2026-10-03_112115/`.
+
+Daily-run route response:
+
+- `POST /api/daily-run/run` -> 200 in 46.6s.
+- All ten stages returned `status="done"`.
+- Shortfall was honest: `RATE_LIMITED` from the intentionally tiny discovery budget and
+  `NO_ELIGIBLE_JOBS` because no selected job remained above the cutoff.

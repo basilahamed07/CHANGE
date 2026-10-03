@@ -92,7 +92,7 @@ def fake_gmail(monkeypatch):
     """Record the token every Gmail draft is built with; never dedup."""
     captured: list[dict] = []
 
-    async def _no_dedup(self, subject):
+    async def _no_dedup(self, subject, to=""):
         return None
 
     async def _create(self, to, subject, body, thread_hint=""):

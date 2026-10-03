@@ -158,12 +158,15 @@ class ContactProvider:
 
     def __init__(self, rate: float = 1.0, per: float = 1.0):
         self.limiter = AsyncRateLimiter(rate=rate, per=per)
+        self.last_error: str = ""
 
     async def find(self, job: dict) -> list[ContactCandidate]:
+        self.last_error = ""
         try:
             async with self.limiter:
                 return await self._find(job)
         except Exception as e:
+            self.last_error = str(e) or e.__class__.__name__
             logger.warning("ContactProvider %s failed: %s", self.name, e)
             return []
 
@@ -299,19 +302,39 @@ class ManualResearchProvider(ContactProvider):
                 provider=self.name))
         return out
 
+def _scraper_api_key(scraper_keys: dict, name: str) -> str:
+    entry = (scraper_keys or {}).get(name, {})
+    if isinstance(entry, dict):
+        return (entry.get("api_key") or "").strip()
+    if isinstance(entry, str):
+        return entry.strip()
+    return ""
 
-def default_provider_chain(db, web: bool = True) -> list[ContactProvider]:
+
+def default_provider_chain(db, web: bool = True,
+                           scraper_keys: dict | None = None) -> list[ContactProvider]:
     """Fallback order: manual (Basil's own data first) → hunter → apollo → web."""
     chain: list[ContactProvider] = [ManualResearchProvider(db)]
-    hunter = HunterProvider()
+    keys = scraper_keys or {}
+    hunter = HunterProvider(api_key=_scraper_api_key(keys, "hunter"))
     if hunter.available:
         chain.append(hunter)
-    apollo = ApolloProvider()
+    apollo = ApolloProvider(api_key=_scraper_api_key(keys, "apollo"))
     if apollo.available:
         chain.append(apollo)
     if web:
         chain.append(WebSearchProvider())
     return chain
+
+
+async def workspace_provider_chain(db, web: bool = True) -> list[ContactProvider]:
+    """Build provider chain from this workspace's saved scraper keys."""
+    keys = {}
+    try:
+        keys = await db.get_scraper_keys()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Could not load workspace scraper keys for research: %s", e)
+    return default_provider_chain(db, web=web, scraper_keys=keys)
 
 
 # ---------------------------------------------------------------- service
@@ -342,24 +365,32 @@ class ContactResearchService:
 
         candidates: list[ContactCandidate] = []
         used_provider = ""
+        provider_errors: dict[str, str] = {}
         for provider in self.providers:
             if not provider.available:
                 continue
             found = await provider.find(job)
+            last_error = getattr(provider, "last_error", "")
+            if last_error:
+                provider_errors[provider.name] = last_error
             if found:
                 candidates = found
                 used_provider = provider.name
                 break  # first provider with results wins (fallback semantics)
         ranked = rank_candidates(candidates, job.get("title", ""))
         status = "found" if ranked else "not_found"
-        await self.db.save_contact_research(
-            job["id"], job.get("company", ""), status,
-            used_provider or "none", [c.to_dict() for c in ranked])
+        if provider_errors and not ranked:
+            status = "error"
+        else:
+            await self.db.save_contact_research(
+                job["id"], job.get("company", ""), status,
+                used_provider or "none", [c.to_dict() for c in ranked])
         return {
             "job_id": job["id"], "company": job.get("company", ""),
             "status": status, "provider": used_provider or "none",
             "candidates": [c.to_dict() for c in ranked],
             "researched_at": _now_iso(), "cache_hit": False,
+            "provider_errors": provider_errors,
         }
 
     async def select_candidate(self, job: dict, index: int) -> dict:

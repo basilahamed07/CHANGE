@@ -12,6 +12,22 @@
 
 ---
 
+## 2026-10-03 closeout update
+
+The following items were fixed after this backlog was written:
+
+| # | Defect | Fix | Proof |
+|---|---|---|---|
+| 8 | Stage-9 O2 Gmail draft dedup mislink | Gmail lookup is scoped by subject + recipient and verifies draft metadata headers before adopting. Unverifiable metadata fails closed. | `tests/test_outreach.py`; focused suites 95 passed |
+| 9 | Stage-7 R2 transient provider failure cached as `not_found` | Providers record `last_error`; research returns `status="error"` with `provider_errors` and does not write a fresh negative cache row. | `tests/test_contact_providers.py`; full backend 1280 passed |
+| 11 | Stage-7 R1 provider keys read from process env | `workspace_provider_chain(db)` loads this workspace's `scraper_keys` and passes them to Hunter/Apollo; env remains only fallback. | `tests/test_contact_providers.py`; full backend 1280 passed |
+| 13 | Stage-6 S6 API daily run executes almost nothing | `/api/daily-run/run` now wires all ten stages and builds packages through the existing evidence-gated route; outreach stays draft-only. | `tests/test_daily_run.py`; E2E run `analysis/e2e_runs/2026-10-03_112115/` |
+
+Focused real-server E2E on 2026-10-03: **9/9 scenarios, 67/67 checks**, including
+`POST /api/daily-run/run` returning all ten stages as `done`.
+
+---
+
 ## How to read the severity column
 
 | Level | Meaning |

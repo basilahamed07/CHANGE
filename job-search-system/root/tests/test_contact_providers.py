@@ -21,6 +21,7 @@ from app.contact_providers import (
     ROLE_RECRUITER,
     ROLE_REFERRER,
     ContactCandidate,
+    ContactProvider,
     ContactResearchService,
     HunterProvider,
     ManualResearchProvider,
@@ -29,6 +30,7 @@ from app.contact_providers import (
     default_provider_chain,
     rank_candidates,
     score_confidence,
+    workspace_provider_chain,
 )
 
 
@@ -267,6 +269,62 @@ def test_default_chain_manual_first_web_last(tmp_path):
     chain = default_provider_chain(object(), web=True)
     assert chain[0].name == "manual"
     assert chain[-1].name == "web_search"
+
+
+def test_default_chain_prefers_workspace_keys_over_env(monkeypatch):
+    monkeypatch.setenv("JOBAGENT_HUNTER_API_KEY", "env-hunter")
+    monkeypatch.setenv("JOBAGENT_APOLLO_API_KEY", "env-apollo")
+
+    chain = default_provider_chain(
+        object(), web=False,
+        scraper_keys={
+            "hunter": {"api_key": "workspace-hunter"},
+            "apollo": {"api_key": "workspace-apollo"},
+        },
+    )
+
+    providers = {p.name: p for p in chain}
+    assert providers["hunter"].api_key == "workspace-hunter"
+    assert providers["apollo"].api_key == "workspace-apollo"
+
+
+@pytest.mark.asyncio
+async def test_workspace_provider_chain_reads_scraper_keys(tmp_path, monkeypatch):
+    from app.database import Database
+    monkeypatch.delenv("JOBAGENT_HUNTER_API_KEY", raising=False)
+    monkeypatch.delenv("JOBAGENT_APOLLO_API_KEY", raising=False)
+    db = Database(str(tmp_path / "t.db"))
+    await db.init()
+    await db.save_scraper_key("hunter", "workspace-hunter")
+
+    chain = await workspace_provider_chain(db, web=False)
+
+    providers = {p.name: p for p in chain}
+    assert providers["hunter"].api_key == "workspace-hunter"
+    assert "apollo" not in providers
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_provider_error_is_not_cached_as_not_found(tmp_path):
+    from app.database import Database
+
+    class Boom(ContactProvider):
+        name = "boom"
+
+        async def _find(self, job):
+            raise TimeoutError("temporary outage")
+
+    db = Database(str(tmp_path / "t.db"))
+    await db.init()
+    service = ContactResearchService(db, [Boom()])
+
+    result = await service.research(_job())
+
+    assert result["status"] == "error"
+    assert result["provider_errors"] == {"boom": "temporary outage"}
+    assert await db.get_contact_research(1) is None
+    await db.close()
 
 
 # ---------------- company enrichment ----------------

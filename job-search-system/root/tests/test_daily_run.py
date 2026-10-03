@@ -33,6 +33,53 @@ def make_impl(name, detail=None, fail=False):
 
 
 @pytest.mark.asyncio
+async def test_daily_run_route_wires_all_ten_stages(client, app, monkeypatch):
+    """Regression for S6: the API route must not pass most stages as None."""
+    class _Registry:
+        def enabled_countries(self):
+            return [type("_Country", (), {"code": "SG"})()]
+
+    async def _ok_resume(request):
+        return None
+
+    async def _discover(*args, **kwargs):
+        return {"new_jobs": 0, "pass_budget": 1, "budget_exhausted": False}
+
+    async def _classify(db, ai_client=None):
+        return 0
+
+    async def _eligibility(db, registry=None, force=False, limit=2000):
+        return 0
+
+    async def _ai_state_for(request):
+        return {"client": None, "matcher": None, "tailor": None,
+                "evidence_store": None, "evidence_checker": None}
+
+    async def _hybrid_state(request):
+        return type("_State", (), {})()
+
+    async def _hybrid(app_state, db, limit=2000):
+        return {"scored": 0, "total": 0, "engine": "hybrid-m6"}
+
+    monkeypatch.setattr("app.search_gate.require_resume_for_search", _ok_resume)
+    monkeypatch.setattr("app.discovery.run_discovery_cycle", _discover)
+    monkeypatch.setattr("app.scheduler.run_location_classification", _classify)
+    monkeypatch.setattr("app.scheduler.run_eligibility_pass", _eligibility)
+    monkeypatch.setattr("app.routers.matching._hybrid_state", _hybrid_state)
+    monkeypatch.setattr("app.matching_service.score_all_unscored", _hybrid)
+    app.state.country_registry = _Registry()
+    app.state.ai_state_for = _ai_state_for
+
+    r = await client.post("/api/daily-run/run")
+
+    assert r.status_code == 200
+    stages = r.json()["stages"]
+    assert [s["name"] for s in stages] == STAGES
+    assert all(s["status"] == "done" for s in stages)
+    assert not any(s["detail"].get("reason") == "not_implemented" for s in stages)
+
+
+@pytest.mark.asyncio
 async def test_all_stages_run_in_order():
     order = []
 

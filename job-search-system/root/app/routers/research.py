@@ -21,12 +21,12 @@ router = APIRouter(prefix="/api/research")
 @router.post("/contacts/job/{job_id}")
 async def research_contacts(request: Request, job_id: int, force: bool = False):
     """Research contacts for a job (cache-first, provider fallback chain)."""
-    from app.contact_providers import ContactResearchService, default_provider_chain
+    from app.contact_providers import ContactResearchService, workspace_provider_chain
     db = _db(request)
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
-    service = ContactResearchService(db, default_provider_chain(db))
+    service = ContactResearchService(db, await workspace_provider_chain(db))
     result = await service.research(job, force=force)
     return result
 
@@ -43,7 +43,7 @@ async def get_contact_research(request: Request, job_id: int):
 @router.post("/contacts/job/{job_id}/select")
 async def select_contact(request: Request, job_id: int):
     """Pick one researched candidate (body: {index}) → job + contacts table."""
-    from app.contact_providers import ContactResearchService, default_provider_chain
+    from app.contact_providers import ContactResearchService, workspace_provider_chain
     db = _db(request)
     job = await db.get_job(job_id)
     if not job:
@@ -52,7 +52,7 @@ async def select_contact(request: Request, job_id: int):
     index = body.get("index")
     if not isinstance(index, int):
         raise HTTPException(422, "body must be {\"index\": <int>}")
-    service = ContactResearchService(db, default_provider_chain(db))
+    service = ContactResearchService(db, await workspace_provider_chain(db))
     try:
         return await service.select_candidate(job, index)
     except ValueError as e:
@@ -64,11 +64,9 @@ async def select_contact(request: Request, job_id: int):
 @router.get("/providers")
 async def provider_status(request: Request):
     """Which contact providers are configured/available right now."""
-    from app.contact_providers import (
-        ApolloProvider, HunterProvider, ManualResearchProvider, WebSearchProvider)
+    from app.contact_providers import workspace_provider_chain
     db = _db(request)
-    providers = [ManualResearchProvider(db), HunterProvider(),
-                 ApolloProvider(), WebSearchProvider()]
+    providers = await workspace_provider_chain(db)
     return {"providers": [
         {"name": p.name, "available": bool(p.available)} for p in providers]}
 
