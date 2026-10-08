@@ -43,7 +43,8 @@ def test_fingerprint_changes_with_any_input():
     b = _inputs(tailored="Different text entirely.").fingerprint()
     c = _inputs(profile_version="changed").fingerprint()
     d = _inputs(cover="").fingerprint()
-    assert len({a, b, c, d}) == 4
+    e = _inputs(target_country="Singapore").fingerprint()
+    assert len({a, b, c, d, e}) == 5
     assert a == _inputs().fingerprint()  # deterministic
 
 
@@ -52,12 +53,15 @@ def test_build_writes_package_with_docx_first(tmp_path):
     result = builder_build(builder, tmp_path)
     pdir = tmp_path / "0001-acme-ai"
     assert (pdir / "resume.txt").exists()
+    assert (pdir / "resume.md").exists()
     assert (pdir / "resume.docx").exists()
     assert (pdir / "cover_letter.txt").exists()
+    assert (pdir / "cover_letter.md").exists()
     assert (pdir / "cover_letter.docx").exists()
     assert (pdir / "metadata.json").exists()
     assert result.action == "built"
     assert "resume.docx" in result.files
+    assert "resume.md" in result.files
     # DOCX is a real zip (docx = OOXML)
     with open(pdir / "resume.docx", "rb") as f:
         assert f.read(2) == b"PK"
@@ -119,8 +123,10 @@ def test_no_cover_letter_no_cl_files(tmp_path):
     pdir = tmp_path / "0001-acme-ai"
     assert not (pdir / "cover_letter.docx").exists()
     assert not (pdir / "cover_letter.txt").exists()
+    assert not (pdir / "cover_letter.md").exists()
     meta = json.loads((pdir / "metadata.json").read_text())
     assert "cover_letter.docx" not in meta["files"]
+    assert "cover_letter.md" not in meta["files"]
 
 
 def test_evidence_violation_blocks_packaging(tmp_path):
@@ -139,6 +145,172 @@ def test_corrupt_metadata_rebuilds(tmp_path):
     (pdir / "metadata.json").write_text("{corrupt", encoding="utf-8")
     result = _run(builder.build(_inputs()))
     assert result.action == "rebuilt"
+
+
+def test_locked_existing_file_is_preserved(tmp_path, monkeypatch):
+    builder = ApplicationBuilder(str(tmp_path))
+    _run(builder.build(_inputs()))
+    pdir = tmp_path / "0001-acme-ai"
+    locked = pdir / "resume.docx"
+    original = locked.read_bytes()
+
+    def denied(_self, _data):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(type(locked), "write_bytes", denied)
+
+    result = _run(builder.build(_inputs(tailored="Updated tailored resume text.")))
+
+    assert result.action == "rebuilt"
+    assert locked.read_bytes() == original
+    assert (pdir / "resume.md").exists()
+    # A locked file must not be advertised as written, or the package claims
+    # to hold an artifact that is stale on disk.
+    assert "resume.docx" not in result.metadata["files"]
+
+
+def test_locked_file_does_not_freeze_the_package(tmp_path, monkeypatch):
+    """The next build retries a locked file instead of no-op'ing forever."""
+    builder = ApplicationBuilder(str(tmp_path))
+    _run(builder.build(_inputs()))
+    pdir = tmp_path / "0001-acme-ai"
+    locked = pdir / "resume.docx"
+    original = locked.read_bytes()
+
+    def denied(_self, _data):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(type(locked), "write_bytes", denied)
+    _run(builder.build(_inputs(tailored="Updated tailored resume text.")))
+
+    assert locked.read_bytes() == original
+
+    # Fingerprint must not advance, so identical inputs still rebuild.
+    assert builder.read_metadata(1, "ACME AI")["inputs_fingerprint"] != ""
+
+    monkeypatch.undo()
+    result = _run(builder.build(_inputs(tailored="Updated tailored resume text.")))
+    assert result.action == "rebuilt"
+    assert "resume.docx" in result.metadata["files"]
+    # The retry must actually replace the stale artifact, not just re-advertise it.
+    assert locked.read_bytes() != original
+
+
+# ---------------- ATS resume artifacts (Markdown source + PDF) ----------------
+
+STRUCTURED_RESUME = json.dumps({
+    "basics": {"name": "Basil Ahamed H", "headline": "AI Engineer | LLM | RAG",
+               "contact": {"email": "basil@example.com"}},
+    "summary": "AI/ML Engineer with RAG experience.",
+    "skills": [{"group": "Generative AI", "items": ["LangChain", "LangGraph"]}],
+    "experience": [{"title": "AI Application Developer", "company": "Changepond",
+                    "dates": "May 2024 - Present",
+                    "bullets": ["Built a multi-agent NLP-to-SQL chatbot."]}],
+})
+
+
+def test_structured_resume_drives_the_package_markdown(tmp_path):
+    """resume.md comes from the structured resume, not the legacy text blob."""
+    builder = ApplicationBuilder(str(tmp_path))
+    _run(builder.build(_inputs(
+        tailored="LEGACY TEXT THAT SHOULD NOT WIN", resume_json=STRUCTURED_RESUME)))
+    md = (tmp_path / "0001-acme-ai" / "resume.md").read_text(encoding="utf-8")
+    assert md.startswith("# Basil Ahamed H")
+    assert "## Technical Skills" in md
+    assert "## Professional Experience" in md
+    assert "LEGACY TEXT" not in md
+
+
+def test_llm_resume_markdown_is_the_direct_package_source(tmp_path):
+    builder = ApplicationBuilder(str(tmp_path))
+    direct_md = (
+        "# Direct Markdown\n\n"
+        "**AI Engineer | RAG**\n\n"
+        "Remote | direct@example.com\n\n"
+        "## Professional Summary\n\n"
+        "Model-authored source.\n\n"
+        "## Professional Experience\n\n"
+        "### Engineer | Acme | Remote | 2020 - 2024\n\n"
+        "- Built verified AI systems.\n"
+    )
+    _run(builder.build(_inputs(
+        tailored="LEGACY TEXT THAT SHOULD NOT WIN",
+        resume_json=STRUCTURED_RESUME,
+        resume_markdown=direct_md,
+    )))
+    md = (tmp_path / "0001-acme-ai" / "resume.md").read_text(encoding="utf-8")
+    assert md == direct_md.strip()
+    assert "Basil Ahamed H" not in md
+
+
+def test_package_contains_a_pdf(tmp_path):
+    """The package carries resume.pdf and cover_letter.pdf alongside the rest."""
+    builder = ApplicationBuilder(str(tmp_path))
+    result = _run(builder.build(_inputs(resume_json=STRUCTURED_RESUME)))
+    pdir = tmp_path / "0001-acme-ai"
+    for name in ("resume.md", "resume.pdf", "resume.docx", "resume.txt",
+                 "cover_letter.md", "cover_letter.pdf", "cover_letter.docx"):
+        assert (pdir / name).exists(), f"{name} missing from the package"
+        assert name in result.files
+    assert (pdir / "resume.pdf").read_bytes()[:5] == b"%PDF-"
+    assert (pdir / "cover_letter.pdf").read_bytes()[:5] == b"%PDF-"
+
+
+def test_package_pdf_text_layer_is_readable(tmp_path):
+    """The PDF must carry real text so an ATS can parse it."""
+    import fitz
+    builder = ApplicationBuilder(str(tmp_path))
+    _run(builder.build(_inputs(resume_json=STRUCTURED_RESUME)))
+    doc = fitz.open(str(tmp_path / "0001-acme-ai" / "resume.pdf"))
+    try:
+        text = "\n".join(page.get_text() for page in doc)
+    finally:
+        doc.close()
+    assert "Basil Ahamed H" in text
+    assert "Changepond" in text
+
+
+def test_legacy_package_still_gets_a_pdf(tmp_path):
+    """Rows prepared before the structured schema still produce every format."""
+    builder = ApplicationBuilder(str(tmp_path))
+    result = _run(builder.build(_inputs()))  # no resume_json
+    pdir = tmp_path / "0001-acme-ai"
+    assert (pdir / "resume.md").exists()
+    assert (pdir / "resume.pdf").read_bytes()[:5] == b"%PDF-"
+    assert "resume.pdf" in result.files
+
+
+def test_provenance_alone_does_not_force_a_rebuild(tmp_path):
+    """`generated_by` records how text was produced — it changes nothing rendered.
+
+    So recording provenance on an otherwise identical package stays a NO-OP.
+    """
+    builder = ApplicationBuilder(str(tmp_path))
+    first = _run(builder.build(_inputs()))
+    second = _run(builder.build(_inputs(generated_by="regenerated")))
+    assert first.action == "built"
+    assert second.action == "noop"
+
+
+def test_gaining_the_structured_resume_rebuilds_the_package(tmp_path):
+    """A legacy package must upgrade when the structured resume arrives.
+
+    resume_json changes what gets rendered, so it belongs in the fingerprint:
+    without this, adding the structured resume would stay a NO-OP and the
+    package's resume.md would keep coming from the guessed legacy parser.
+    """
+    builder = ApplicationBuilder(str(tmp_path))
+    first = _run(builder.build(_inputs(tailored="JANE DOE\nSUMMARY\nDid things.")))
+    assert first.action == "built"
+    legacy_md = (tmp_path / "0001-acme-ai" / "resume.md").read_text(encoding="utf-8")
+    assert legacy_md.startswith("# Jane Doe")
+
+    second = _run(builder.build(_inputs(tailored="JANE DOE\nSUMMARY\nDid things.",
+                                        resume_json=STRUCTURED_RESUME)))
+    assert second.action == "rebuilt"
+    upgraded = (tmp_path / "0001-acme-ai" / "resume.md").read_text(encoding="utf-8")
+    assert upgraded.startswith("# Basil Ahamed H")
+    assert "## Professional Experience" in upgraded
 
 
 def test_read_metadata_roundtrip(tmp_path):
@@ -273,8 +445,20 @@ class _FakeTailor:
         self.cover = cover
         self.calls = 0
 
-    async def prepare(self, job_description, match_reasons, suggested_keywords):
+    async def prepare(self, job_description, match_reasons, suggested_keywords,
+                      resume_text=None, target_contact_line="", target_country=""):
+        """Mirror `Tailor.prepare` exactly.
+
+        Kept in sync with the real signature on purpose: when this stand-in
+        drifted (missing target_contact_line/target_country) the regenerate
+        test failed with a TypeError from the production caller instead of
+        testing anything.
+        """
         self.calls += 1
+        self.last_kwargs = {
+            "target_contact_line": target_contact_line,
+            "target_country": target_country,
+        }
         return {"tailored_resume": self.text, "cover_letter": self.cover}
 
 

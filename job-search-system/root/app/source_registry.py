@@ -121,6 +121,8 @@ SOURCES: dict[str, SourceSpec] = {s.name: s for s in [
                                   "countries — highest-leverage keyed source"),
     SourceSpec("adzuna", SourceType.GLOBAL_BOARD, 2, ("*",), Access.API_KEY,
                priority=31, notes="per-country markets (de/nl/ie/gb/in/ca/au/pl/ae/sg)"),
+    SourceSpec("tavily_search", SourceType.SEARCH_DISCOVERY, 2, ("*",), Access.API_KEY,
+               priority=31, notes="Tavily API search over trusted career domains"),
     SourceSpec("wellfound", SourceType.STARTUP_BOARD, 2, ("*",), Access.PUBLIC,
                priority=32, notes="startup/AI roles (AngelList)"),
     SourceSpec("remotive", SourceType.REMOTE_BOARD, 2, ("*",), Access.PUBLIC,

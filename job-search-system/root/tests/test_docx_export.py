@@ -97,6 +97,31 @@ async def test_download_cover_letter_docx(client, app):
 
 
 @pytest.mark.asyncio
+async def test_download_resume_markdown(client, app):
+    job_id = await _create_job_with_application(
+        app.state.db,
+        resume_text="Jane Doe\nPROFESSIONAL SUMMARY\nAI Engineer with RAG experience",
+    )
+    resp = await client.get(f"/api/jobs/{job_id}/resume.md")
+    assert resp.status_code == 200
+    assert "text/markdown" in resp.headers["content-type"]
+    assert resp.text.startswith("# Jane Doe")
+    assert "## Professional Summary" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_download_cover_letter_markdown(client, app):
+    job_id = await _create_job_with_application(
+        app.state.db,
+        cover_letter="Dear Hiring Manager,\n\nHello.",
+    )
+    resp = await client.get(f"/api/jobs/{job_id}/cover-letter.md")
+    assert resp.status_code == 200
+    assert "text/markdown" in resp.headers["content-type"]
+    assert resp.text == "Dear Hiring Manager,\n\nHello.\n"
+
+
+@pytest.mark.asyncio
 async def test_download_resume_docx_no_job(client):
     resp = await client.get("/api/jobs/999/resume.docx")
     assert resp.status_code == 404

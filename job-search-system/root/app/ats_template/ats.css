@@ -1,0 +1,139 @@
+/* ATS-safe resume stylesheet — written for this project, no third-party code.
+ *
+ * Constraints that keep a resume parseable by applicant tracking systems:
+ *   - one column, no floats, no tables, no multi-column layout
+ *   - real text (never images), standard font stack
+ *   - section headings stay in the text layer, not CSS-generated content
+ *   - no text-transform, so the extracted text matches what was written
+ *
+ * Page geometry matches the PDF renderer: US Letter, 0.75in margins.
+ */
+
+@page {
+  size: Letter;
+  margin: 0.75in;
+}
+
+:root {
+  --ink: #1a1a1a;
+  --muted: #444444;
+  --rule: #cccccc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: Calibri, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.35;
+  color: var(--ink);
+  background: #ffffff;
+  /* Never clip content: a truncated page loses information an ATS needs. */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+/* --------------------------------------------------------------- header */
+
+.resume-header {
+  margin: 0 0 10pt 0;
+}
+
+.resume-name {
+  font-size: 16pt;
+  font-weight: 700;
+  line-height: 1.15;
+  margin: 0 0 2pt 0;
+  letter-spacing: 0.2pt;
+}
+
+.resume-headline {
+  font-size: 10.5pt;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 3pt 0;
+}
+
+.resume-contact {
+  font-size: 9.5pt;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ------------------------------------------------------------- sections */
+
+.section {
+  margin: 0 0 8pt 0;
+  /* Keep a heading with at least the start of its content. */
+  break-inside: auto;
+}
+
+.section > h2 {
+  font-size: 11.5pt;
+  font-weight: 700;
+  margin: 0 0 3pt 0;
+  padding: 0 0 2pt 0;
+  border-bottom: 0.75pt solid var(--rule);
+  break-after: avoid;
+  break-inside: avoid;
+}
+
+.entry {
+  margin: 0 0 6pt 0;
+}
+
+.entry-title {
+  font-size: 11pt;
+  font-weight: 700;
+  margin: 0 0 1pt 0;
+  break-after: avoid;
+}
+
+.entry-meta {
+  font-size: 9.5pt;
+  color: var(--muted);
+  margin: 0 0 2pt 0;
+  break-after: avoid;
+}
+
+.entry-summary {
+  margin: 0 0 2pt 0;
+}
+
+/* Bullets: real list markup so the text layer keeps the bullet semantics. */
+ul.bullets {
+  margin: 0;
+  padding-left: 14pt;
+  list-style-type: disc;
+}
+
+ul.bullets > li {
+  margin: 0 0 1pt 0;
+  /* A bullet split across pages reads badly; keep each one whole. */
+  break-inside: avoid;
+}
+
+.skills-line {
+  margin: 0 0 2pt 0;
+}
+
+.skills-line .skills-label {
+  font-weight: 700;
+}
+
+.plain-line {
+  margin: 0 0 2pt 0;
+}
+
+a {
+  color: var(--ink);
+  text-decoration: none;
+}

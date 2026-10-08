@@ -222,6 +222,14 @@ function renderJobDetailContent(container, job, profile = {}, companyInfo = null
                 <div class="card sidebar-section">
                     <div id="pipeline-actions-container"><div class="loading-container"><span class="spinner"></span></div></div>
                 </div>
+                ${!application?.tailored_resume ? `
+                <div class="card sidebar-section" id="not-prepared-card">
+                    <h3>Application Files</h3>
+                    <div style="font-size:0.8125rem;color:var(--text-tertiary);line-height:1.5">
+                        Not prepared yet. Use Prepare Application to generate the reviewed resume, cover letter, and download files.
+                    </div>
+                </div>
+                ` : ''}
                 <div class="card sidebar-section">
                     <h3>Timeline</h3>
                     ${renderQuickActions(job)}
@@ -264,7 +272,7 @@ function renderJobDetailContent(container, job, profile = {}, companyInfo = null
                     ${application?.tailored_resume ? renderPreparedSection(application, job.id) : ''}
                 </div>
                 <div id="cover-letter-container">
-                    ${application?.cover_letter ? renderCoverLetterSection(application.cover_letter, job.id) : `
+                    ${application?.tailored_resume ? '' : application?.cover_letter ? renderCoverLetterSection(application.cover_letter, job.id) : `
                     <div class="card sidebar-section">
                         <h3>Cover Letter</h3>
                         <button class="btn btn-secondary" id="generate-cover-letter-btn" style="width:100%">Generate Cover Letter</button>
@@ -386,7 +394,12 @@ function renderJobDetailContent(container, job, profile = {}, companyInfo = null
         try {
             const result = await api.prepareApplication(job.id, resumeId);
             document.getElementById('prepared-container').innerHTML = renderPreparedSection(result, job.id);
+            document.getElementById('cover-letter-container').innerHTML = '';
+            document.getElementById('not-prepared-card')?.remove();
             attachPreparedListeners();
+            if (typeof window.__jobagentReloadPipelinePanel === 'function') {
+                await window.__jobagentReloadPipelinePanel();
+            }
             showToast('Application prepared!', 'success');
         } catch (err) {
             showToast(err.message, 'error');
@@ -828,10 +841,10 @@ function wirePipelineActions(job, container, resumes) {
                 <div>
                     <div style="font-weight:600;margin-bottom:4px">Application Package (M8)</div>
                     ${pkg ? `<div>status: <strong>${escapeHtml(pkg.package_status || 'ready_for_review')}</strong></div>
-                        <a class="btn btn-secondary btn-sm" href="/api/packages/jobs/${job.id}/download/resume.docx" style="margin-top:4px">Download resume.docx</a>`
-                        : '<div style="color:var(--text-tertiary)">No package built</div>'}
+                        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${packageDownloadLinks(job.id, pkg)}</div>`
+                        : `<div style="color:var(--text-tertiary)">${job.application?.tailored_resume ? 'No package built yet' : 'No package because application is not prepared'}</div>`}
                     <div style="display:flex;gap:6px;margin-top:4px">
-                        <button class="btn btn-primary btn-sm" id="build-package-btn" title="Re-runs AI tailoring and overwrites the stored reviewed text">Build Package (AI)</button>
+                        <button class="btn btn-secondary btn-sm" id="build-package-btn" title="Re-runs AI tailoring and overwrites the stored reviewed text">Regenerate with AI</button>
                         <button class="btn btn-secondary btn-sm" id="repackage-btn" title="Zero AI cost — repackages stored text">Repackage (free)</button>
                     </div>
                 </div>
@@ -896,6 +909,7 @@ function wirePipelineActions(job, container, resumes) {
         renderPanel({ eligibility, hybrid: hybrid.explanation ? hybrid : (hybrid.score ? hybrid : hybrid), contacts, package: pkg && (pkg.package || pkg.application || pkg), outreach: outreach.messages || outreach.outreach || [] });
     }
 
+    window.__jobagentReloadPipelinePanel = loadPanelData;
     loadPanelData().catch(() => renderPanel({}));
 }
 
@@ -1197,6 +1211,26 @@ function wireCompSnapshotEvents(container, defaults) {
     });
 }
 
+// Files an application package may contain, in the order they read best.
+// The builder writes all of them; legacy packages (built before the PDF export
+// landed) report only the subset they actually have, so we intersect.
+const PACKAGE_FILES = [
+    'resume.md', 'resume.pdf', 'resume.docx', 'resume.txt',
+    'cover_letter.md', 'cover_letter.pdf', 'cover_letter.docx', 'cover_letter.txt',
+];
+
+function packageDownloadLinks(jobId, pkg) {
+    const declared = (pkg && (pkg.on_disk?.files || pkg.files)) || [];
+    const files = declared.length
+        ? PACKAGE_FILES.filter((f) => declared.includes(f))
+        : PACKAGE_FILES;
+    if (!files.length) return '';
+    return files.map((f) =>
+        `<a class="btn btn-secondary btn-sm" href="/api/packages/jobs/${jobId}/download/${f}" ` +
+        `download title="Download ${f}">${f}</a>`
+    ).join('');
+}
+
 function renderPreparedSection(data, jobId) {
     return `
         <div class="card sidebar-section">
@@ -1211,6 +1245,12 @@ function renderPreparedSection(data, jobId) {
                 <div class="pdf-download-card">
                     <a href="/api/jobs/${jobId}/resume.docx" download class="pdf-file-link docx-file-link" draggable="true">
                         <span class="pdf-icon docx-icon">DOCX</span>
+                        <span class="pdf-label">Resume</span>
+                    </a>
+                </div>
+                <div class="pdf-download-card">
+                    <a href="/api/jobs/${jobId}/resume.md" download class="pdf-file-link docx-file-link" draggable="true">
+                        <span class="pdf-icon docx-icon">MD</span>
                         <span class="pdf-label">Resume</span>
                     </a>
                 </div>
@@ -1234,6 +1274,12 @@ function renderPreparedSection(data, jobId) {
                 <div class="pdf-download-card">
                     <a href="/api/jobs/${jobId}/cover-letter.docx" download class="pdf-file-link docx-file-link" draggable="true">
                         <span class="pdf-icon docx-icon">DOCX</span>
+                        <span class="pdf-label">Cover Letter</span>
+                    </a>
+                </div>
+                <div class="pdf-download-card">
+                    <a href="/api/jobs/${jobId}/cover-letter.md" download class="pdf-file-link docx-file-link" draggable="true">
+                        <span class="pdf-icon docx-icon">MD</span>
                         <span class="pdf-label">Cover Letter</span>
                     </a>
                 </div>

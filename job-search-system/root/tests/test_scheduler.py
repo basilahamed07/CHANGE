@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -91,6 +92,50 @@ async def test_scrape_cycle_handles_scraper_error(db):
     assert new_count == 1
     jobs = await db.list_jobs()
     assert len(jobs) == 1
+
+
+@pytest.mark.asyncio
+async def test_scrape_cycle_fetches_sources_concurrently(db, monkeypatch):
+    import app.scheduler as scheduler
+
+    monkeypatch.setattr(scheduler, "SCRAPER_CONCURRENCY", 2)
+    started = set()
+    both_started = asyncio.Event()
+
+    def slow_scraper(name, url):
+        scraper = MagicMock()
+        scraper.source_name = name
+
+        async def scrape():
+            started.add(name)
+            if len(started) == 2:
+                both_started.set()
+            await asyncio.wait_for(both_started.wait(), timeout=1.0)
+            return [
+                JobListing(
+                    title="AI Engineer",
+                    company=f"{name}Co",
+                    location="Remote",
+                    description="desc",
+                    url=url,
+                    source=name,
+                )
+            ]
+
+        scraper.scrape = scrape
+        return scraper
+
+    new_count = await run_scrape_cycle(
+        db,
+        scrapers=[
+            slow_scraper("slow1", "https://example.com/slow1"),
+            slow_scraper("slow2", "https://example.com/slow2"),
+        ],
+        force=True,
+    )
+
+    assert new_count == 2
+    assert started == {"slow1", "slow2"}
 
 
 @pytest.mark.asyncio

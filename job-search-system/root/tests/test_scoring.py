@@ -11,8 +11,9 @@ One regression test per defect recorded in docs/score/SCORE_AUDIT.md:
       asked for in the prompt.
 - D5  a malformed entry (no usable score) is skipped, not recorded as 0.
 
-Plus the contracts that must not regress: batch→individual fallback, the
-3-consecutive-failure abort, and fence stripping.
+Plus the contracts that must not regress: bisecting an unusable batch (never
+one call per job), aborting on a provider failure (one call, not N), and fence
+stripping.
 """
 import json
 
@@ -125,18 +126,32 @@ def test_d2_out_of_range_index_is_refused():
 
 @pytest.mark.asyncio
 async def test_d2_count_mismatch_falls_back_rather_than_guessing():
-    """End to end: a misaligned batch must not silently mis-score; it falls back."""
-    individual = json.dumps({"score": 61, "role_match": True, "reasons": [],
-                             "concerns": [], "keywords": []})
+    """End to end: a misaligned batch must not silently mis-score.
+
+    The response carries 2 entries for 3 jobs with no `job_index`, so it cannot
+    be aligned safely. It must be rejected rather than applied positionally, and
+    the batch recovered — with every job still carrying its OWN score and id.
+    The recovery is a bisect (halving), so a batch the model cannot align is
+    retried smaller instead of exploding into one call per job.
+    """
+    seen: list[int] = []
+
+    async def chat(prompt, max_tokens=0, **kwargs):
+        n = prompt.count("--- JOB ")
+        seen.append(n)
+        if n >= 3:
+            # 2 entries for 3 jobs, no indices — unalignable, must be refused.
+            return _batch_json(_entry(score=61), _entry(score=61))
+        return _batch_json(*[_entry(i, score=61) for i in range(n)])
+
     client = MagicMock()
-    client.chat = AsyncMock(side_effect=[
-        _batch_json(_entry(), _entry()),      # 2 entries for 3 jobs, no indices
-        individual, individual, individual,
-    ])
+    client.provider = "deepseek"
+    client.chat = chat
     m = JobMatcher(client=client, resume_text=RESUME)
     results = await m.score_batch(_jobs(3))
     assert [r["job_id"] for r in results] == [1, 2, 3]
     assert all(r["score"] == 61 for r in results)
+    assert seen == [3, 1, 2]   # batch of 3 rejected, then recovered as 1 + 2
 
 
 # --------------------------- D5 / robustness: unusable entries --------------------
@@ -215,22 +230,49 @@ async def test_single_job_path_rejects_response_without_a_score():
 # --------------------------- fallback contracts -----------------------------------
 
 @pytest.mark.asyncio
-async def test_batch_exception_falls_back_to_individual():
-    individual = json.dumps({"score": 55, "role_match": True, "reasons": [],
-                             "concerns": [], "keywords": []})
+async def test_oversized_batch_is_bisected_never_one_call_per_job():
+    """THE regression this redesign exists for.
+
+    A batch too large for the completion limit must be split in half. The old
+    path fell through to one API call per job, so a big batch cost MORE calls
+    than no batching at all. Here the model only truncates above 4 jobs.
+    """
+    calls: list[int] = []
+
+    async def chat(prompt, max_tokens=0, **kwargs):
+        n = prompt.count("--- JOB ")
+        calls.append(n)
+        if n > 4:
+            # Truncated JSON — exactly what a clamped max_tokens produces.
+            return "[" + ", ".join('{"job_index": %d, "score": 70}' % i for i in range(n))
+        return json.dumps([dict(_entry(i)) for i in range(n)])
+
     client = MagicMock()
-    client.chat = AsyncMock(side_effect=[Exception("AI down"), individual, individual])
+    client.provider = "deepseek"
+    client._MAX_OUTPUT = {"deepseek": 16384}
+    client.chat = chat
     m = JobMatcher(client=client, resume_text=RESUME)
-    results = await m.score_batch(_jobs(2))
-    assert len(results) == 2 and all(r["score"] == 55 for r in results)
+
+    results = await m.score_batch(_jobs(8))
+
+    assert len(results) == 8
+    assert all(r["score"] == 70 for r in results)
+    # 8 jobs in 3 calls (one failed batch of 8 → two batches of 4), not 8 calls.
+    assert calls == [8, 4, 4]
+    assert m.stats["individual"] == 0   # never dropped to one call per job
+    assert m.stats["bisects"] >= 1
 
 
 @pytest.mark.asyncio
-async def test_individual_fallback_aborts_after_three_consecutive_failures():
+async def test_provider_outage_costs_one_call_not_one_per_job():
+    """A dead provider aborts the batch immediately: retrying smaller cannot
+    help, and the old fallback could spend a call per job discovering that."""
     client = _client(Exception("AI down"))
     m = JobMatcher(client=client, resume_text=RESUME)
-    assert await m._fallback_individual(_jobs(10)) == []
-    assert client.chat.await_count == 3  # 3 attempts, then abort — not 10
+    assert await m.score_batch(_jobs(10)) == []
+    assert client.chat.await_count == 1     # 10 jobs, ONE call
+    assert m.stats["aborted"] == 1
+    assert m.stats["individual"] == 0
 
 
 @pytest.mark.asyncio

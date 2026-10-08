@@ -117,6 +117,57 @@ async def test_country_scoping_filters_other_countries():
     assert [j.location for j in result.listings] == ["Berlin, Germany"]
 
 
+@pytest.mark.asyncio
+async def test_tavily_search_adapter_missing_key_is_honest_noop():
+    from app.adapters.tavily_search import TavilySearchAdapter
+
+    adapter = TavilySearchAdapter(scraper_keys={})
+    result = await adapter.search(["AI Engineer"])
+
+    assert result.stop_reason == STOP_SOURCE_FAILURE
+    assert result.listings == []
+    assert "tavily_search key not configured" in result.error
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_tavily_search_adapter_normalizes_results():
+    from app.adapters.tavily_search import API_URL, TavilySearchAdapter
+    from app.country_registry import CountryRegistry
+
+    route = respx.post(API_URL).mock(return_value=Response(200, json={
+        "results": [
+            {
+                "title": "GenAI Application Engineer",
+                "url": "https://www.mycareersfuture.gov.sg/job/genai",
+                "content": (
+                    "Singapore job opening for RAG LangGraph LangChain "
+                    "Python. Apply now."
+                ),
+            },
+            {
+                "title": "Marketing Manager",
+                "url": "https://example.com/marketing",
+                "content": "Singapore hiring page.",
+            },
+        ],
+    }))
+    sg = CountryRegistry("config/countries").load().get("Singapore")
+    adapter = TavilySearchAdapter(scraper_keys={
+        "tavily_search": {"api_key": "token"},
+    })
+
+    result = await adapter.search(["AI Engineer"], country=sg)
+
+    assert route.called
+    assert result.stop_reason != STOP_SOURCE_FAILURE
+    assert len(result.listings) == 1
+    job = result.listings[0]
+    assert job.source == "tavily_search"
+    assert job.location == "Singapore"
+    assert "LangGraph" in job.description
+
+
 # ---------------- discovery orchestration (stub adapters) ----------------
 
 class _StubAdapter:

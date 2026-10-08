@@ -134,6 +134,20 @@ def test_checker_blocks_fabricated_metric(checker):
     assert "1.2" in num_fail["items"]  # '1.2M' tokenizes as 1.2 + suffix
 
 
+def test_checker_ignores_resume_headings_and_contact_lines(checker):
+    text = (
+        "BASIL AHAMED H\n"
+        "GEN AI / MACHINE LEARNING ENGINEER | PYTHON | LLMs\n"
+        "basil@example.com | +91 98765 43210 | linkedin.com/in/basil\n"
+        "PROFESSIONAL SUMMARY\n"
+        "AI Engineer at Acme (2023-2025) building RAG pipelines\n"
+        "KEY ACHIEVEMENTS\n"
+        "Cut ingestion time by 40% while processing 10000 documents\n"
+    )
+    result = checker.check(text)
+    assert result.ok, result.failures
+
+
 def test_years_not_flagged_as_metrics(checker):
     """Employment dates must not be misread as invented metrics."""
     text = "AI Engineer at Acme (2023-2025) building RAG pipelines since 2021"

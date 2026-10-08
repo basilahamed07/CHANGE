@@ -126,12 +126,15 @@ async def score_all_unscored(app_state, db, limit: int = 2000) -> dict:
     machine-readable run summary (count, avg, blockers found).
 
     Stage-3 gate: evaluate any un-evaluated jobs first, then read ONLY the
-    ELIGIBLE ones (`get_scoreable_jobs`) so INELIGIBLE / REVIEW_REQUIRED jobs
-    can never enter SCORE.
+    ELIGIBLE ones so INELIGIBLE / REVIEW_REQUIRED jobs can never enter SCORE.
+
+    Uses `get_hybrid_scoreable_jobs` (all eligible jobs), NOT
+    `get_scoreable_jobs` — the latter filters on `js.ai_score IS NULL` because
+    it is the AI entry point, which starved this free pass down to 0 scores.
     """
     from app.scheduler import run_eligibility_pass
     await run_eligibility_pass(db, getattr(app_state, "country_registry", None))
-    jobs = await db.get_scoreable_jobs(limit=limit)
+    jobs = await db.get_hybrid_scoreable_jobs(limit=limit)
     if not jobs:
         return {"scored": 0, "total": 0, "avg": None, "blockers": 0, "engine": "hybrid-m6"}
 

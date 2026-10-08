@@ -532,25 +532,75 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
             from app.scheduler import run_eligibility_pass
             await run_eligibility_pass(
                 db, getattr(app.state, "country_registry", None))
-            all_unscored = await db.get_scoreable_jobs(limit=10000)
+            # Phase 3: FREE LAYER FIRST. The hybrid engine is deterministic and
+            # costs nothing, so every eligible job gets a baseline score before
+            # a single AI token is spent; the paid AI then sees only a
+            # shortlist of the best candidates. Set JOBAGENT_AI_SHORTLIST=0 to
+            # AI-score the whole eligible pool (the pre-2026-10-07 behaviour).
+            shortlist_size = max(0, int(os.getenv("JOBAGENT_AI_SHORTLIST", "100") or 0))
+            if shortlist_size:
+                try:
+                    from app.matching_service import score_all_unscored
+                    hybrid = await score_all_unscored(app.state, db)
+                    logger.info(
+                        "Hybrid baseline before AI: scored=%s, avg=%s, blockers=%s",
+                        hybrid.get("scored"), hybrid.get("avg"), hybrid.get("blockers"))
+                except Exception:
+                    # A free-layer failure must never block the paid layer.
+                    logger.exception("Hybrid baseline pass failed; AI scoring continues")
+                all_unscored = await db.get_ai_shortlist(limit=shortlist_size)
+            else:
+                all_unscored = await db.get_scoreable_jobs(limit=10000)
             total = len(all_unscored)
             if total == 0:
                 return
             slot["scoring_progress"] = {"scored": 0, "total": total, "active": True}
             scored = 0
+            # Big batches, issued in PARALLEL (2026-10-07 redesign).
+            # The target below is a wish: `plan_batches` clamps it to what
+            # genuinely fits in one completion (measured tokens/job vs the
+            # provider cap), so an over-large request can no longer truncate
+            # and silently degrade into one API call per job.
+            batch_target = max(1, int(os.getenv("JOBAGENT_SCORE_BATCH_SIZE", "100")))
+            concurrency = max(1, int(os.getenv("JOBAGENT_SCORE_CONCURRENCY", "4")))
+            batches = matcher.plan_batches(all_unscored, target=batch_target)
+            logger.info(
+                "Scoring %d jobs in %d batch(es) of %d (target %d, concurrency %d)",
+                total, len(batches), (len(batches[0]) if batches else 0),
+                batch_target, concurrency)
+            sem = asyncio.Semaphore(concurrency)
             empty_batches = 0
-            batch_size = 5
-            try:
-                for i in range(0, total, batch_size):
-                    batch = all_unscored[i:i + batch_size]
+            stop = False
+
+            async def _score_one(batch):
+                # Fetch in parallel under a semaphore; the SQLite writes below
+                # stay serial, the same contract the discovery orchestrator uses.
+                nonlocal empty_batches, stop
+                if stop:
+                    return []
+                async with sem:
+                    if stop:
+                        return []
                     results = await matcher.score_batch(batch)
                     if not results:
                         empty_batches += 1
-                        if empty_batches >= 2:
-                            logger.warning("Multiple consecutive empty batches — AI provider likely down, stopping scoring")
-                            break
+                        if empty_batches >= 2 and not stop:
+                            logger.warning(
+                                "Multiple empty batches — AI provider likely down, "
+                                "stopping scoring at %d/%d", scored, total)
+                            stop = True
+                    return results
+
+            try:
+                gathered = await asyncio.gather(
+                    *[_score_one(b) for b in batches], return_exceptions=True)
+                for results in gathered:
+                    if isinstance(results, BaseException):
+                        # One batch crashing must not cancel the others.
+                        logger.error("Scoring batch crashed (isolated): %r", results)
                         continue
-                    empty_batches = 0
+                    if not results:
+                        continue
                     for r in results:
                         await db.insert_score(
                             r["job_id"], r["score"], r["reasons"],
@@ -565,11 +615,14 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
                     scored += len(results)
                     slot["scoring_progress"] = {"scored": scored, "total": total, "active": True}
                     logger.info(f"Scored {scored}/{total} jobs")
-                    # Yield to event loop between batches — give API requests time to process
-                    await asyncio.sleep(0.5)
             finally:
                 slot["scoring_progress"] = {"scored": scored, "total": total, "active": False}
-                logger.info(f"Scoring complete: {scored}/{total} jobs")
+                stats = getattr(matcher, "stats", {})
+                logger.info(
+                    f"Scoring complete: {scored}/{total} jobs "
+                    f"(ai_calls={stats.get('calls', '?')}, bisects={stats.get('bisects', '?')}, "
+                    f"single_job_fallbacks={stats.get('individual', '?')}, "
+                    f"provider_aborts={stats.get('aborted', '?')})")
 
     async def _reinit_ai_services(client: AIClient | None, resume_text: str = ""):
         """Re-initialize matcher and tailor with new AI client."""
@@ -651,9 +704,11 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
         if ws is None:
             # No workspace (unauthenticated/testing paths): app-level defaults.
             # getattr — test apps never run lifespan, so attrs may be unset.
+            client = getattr(app.state, "ai_client", None)
             return {"matcher": getattr(app.state, "matcher", None),
                     "tailor": getattr(app.state, "tailor", None),
-                    "ai_client": getattr(app.state, "ai_client", None),
+                    "ai_client": client,
+                    "client": client,
                     "evidence_store": getattr(app.state, "evidence_store", None),
                     "evidence_checker": getattr(app.state, "evidence_checker", None)}
         key = ws.user_id
@@ -703,6 +758,7 @@ def create_app(db_path: str | None = None, testing: bool = False) -> FastAPI:
         except Exception:
             logger.exception("per-user evidence store failed (user %s) — fail-closed", key)
         state = {"matcher": matcher, "tailor": tailor, "ai_client": client,
+                 "client": client,
                  "evidence_store": evidence_store, "evidence_checker": evidence_checker,
                  "stamp": stamp}
         _user_ai_cache[key] = state

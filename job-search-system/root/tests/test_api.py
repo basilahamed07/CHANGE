@@ -116,6 +116,16 @@ async def test_prepare_with_mock_tailor(client, app, tmp_path):
     mock_tailor = MagicMock()
     mock_tailor.prepare = AsyncMock(return_value={
         "tailored_resume": "Tailored resume text",
+        "resume_markdown": (
+            "# Tailored Resume\n\n"
+            "**AI Engineer**\n\n"
+            "Remote | test@example.com\n\n"
+            "## Professional Summary\n\n"
+            "Tailored resume text\n\n"
+            "## Professional Experience\n\n"
+            "### Engineer | Acme | Remote | 2024 - Present\n\n"
+            "- Tailored resume text\n"
+        ),
         "cover_letter": "Dear hiring manager...",
     })
     app.state.tailor = mock_tailor
@@ -135,6 +145,14 @@ async def test_prepare_with_mock_tailor(client, app, tmp_path):
         "    value: \"Tailored resume text\"\n"
         "    status: VERIFIED\n"
         "    source: test\n"
+        "  - id: r2\n"
+        "    value: \"Tailored Resume\"\n"
+        "    status: VERIFIED\n"
+        "    source: test\n"
+        "  - id: r3\n"
+        "    value: \"Engineer at Acme in Remote, 2024 to Present\"\n"
+        "    status: VERIFIED\n"
+        "    source: test\n"
         "  - id: c1\n"
         "    value: \"Dear hiring manager\"\n"
         "    status: VERIFIED\n"
@@ -150,19 +168,39 @@ async def test_prepare_with_mock_tailor(client, app, tmp_path):
     data = resp.json()
     assert data["status"] == "prepared"
     assert data["tailored_resume"] == "Tailored resume text"
+    assert data["resume_markdown"].startswith("# Tailored Resume")
     assert data["cover_letter"] == "Dear hiring manager..."
+    assert data["package"]["metadata"]["status"] == "ready_for_review"
+    assert "resume.md" in data["package"]["files"]
+    assert "resume.docx" in data["package"]["files"]
 
     mock_tailor.prepare.assert_called_once_with(
         job_description="Build things",
         match_reasons=["Good skills match"],
         suggested_keywords=["Python", "AWS"],
         resume_text=None,
+        target_contact_line=(
+            "Chennai, India | Open to remote/global roles | "
+            "basilahamed46@gmail.com | +91 73970 61751 | "
+            "linkedin.com/in/basilahamed46 | github.com/basilahamed07"
+        ),
+        target_country="",
     )
 
     application = await db.get_application(job_id)
     assert application is not None
     assert application["status"] == "prepared"
     assert application["tailored_resume"] == "Tailored resume text"
+    assert application["resume_markdown"].startswith("# Tailored Resume")
+    assert application["package_status"] == "ready_for_review"
+    assert application["package_dir"]
+
+    from pathlib import Path
+    package_dir = Path(application["package_dir"])
+    assert (package_dir / "resume.md").exists()
+    assert (package_dir / "resume.md").read_text(encoding="utf-8").startswith("# Tailored Resume")
+    assert (package_dir / "resume.docx").exists()
+    assert (package_dir / "cover_letter.md").exists()
 
 
 @pytest.mark.asyncio

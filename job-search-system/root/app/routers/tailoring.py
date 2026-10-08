@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 from datetime import datetime, timezone
 
@@ -9,6 +10,93 @@ from app.main import _db  # M15b: per-user workspace DB
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
+
+
+_COUNTRY_CODE_NAMES = {
+    "AE": "UAE", "AU": "Australia", "CA": "Canada", "DE": "Germany",
+    "GB": "UK", "IE": "Ireland", "IN": "India", "NL": "Netherlands",
+    "PL": "Poland", "SG": "Singapore", "US": "United States",
+}
+
+
+def _target_country(job: dict) -> str:
+    code = (job.get("country_code") or "").strip().upper()
+    if code in _COUNTRY_CODE_NAMES:
+        return _COUNTRY_CODE_NAMES[code]
+    region = (job.get("location_region") or "").strip()
+    if region and region.upper() not in {"REMOTE", "GLOBAL", "APAC", "EMEA", "UNKNOWN"}:
+        return "United States" if region.upper() == "US" else region
+    try:
+        from app.location_classifier import classify_location_rule_based
+        classified = classify_location_rule_based(job.get("location") or "")
+    except Exception:
+        classified = None
+    if classified and classified.upper() not in {"REMOTE", "GLOBAL", "APAC", "EMEA", "UNKNOWN"}:
+        return "United States" if classified.upper() == "US" else classified
+    return ""
+
+
+def _target_contact_line(job: dict) -> str:
+    current = "Chennai, India"
+    tail = "basilahamed46@gmail.com | +91 73970 61751 | linkedin.com/in/basilahamed46 | github.com/basilahamed07"
+    country = _target_country(job)
+    if not country:
+        return f"{current} | Open to remote/global roles | {tail}"
+    if country == "India":
+        return f"{current} | Open to hybrid/onsite roles in India | {tail}"
+    return f"{current} | Relocating to {country} (work pass sponsorship required) | {tail}"
+
+
+async def _build_prepared_package(request: Request, job: dict, app_id: int,
+                                  tailored: str, cover: str, resume_json: str,
+                                  resume_markdown: str, evidence_result: dict) -> dict:
+    """Build review artifacts from the already evidence-checked application.
+
+    This is deliberately a zero-AI step: `/prepare` has just produced and
+    persisted the reviewed text, so the package must materialize exactly that
+    text into MD/PDF/DOCX files.
+    """
+    from app.application_builder import ApplicationBuilder, PackageInputs, sha256_text
+    from app.config import get_settings
+
+    db = _db(request)
+    ws = getattr(request.state, "workspace", None)
+    if ws is not None:
+        base = ws.applications_dir
+    else:
+        db_path = getattr(request.app.state, "db_path", None) or get_settings().db_path
+        base = os.path.join(os.path.dirname(db_path) or "data", "applications")
+
+    ai = await request.app.state.ai_state_for(request)
+    store = ai.get("evidence_store") or getattr(request.app.state, "evidence_store", None)
+    ai_settings = await db.get_ai_settings()
+    resume_row = await db.get_default_resume()
+    profile_version = (getattr(store, "loaded_at", "") if store else "") or "unknown"
+
+    inputs = PackageInputs(
+        job_id=job["id"],
+        company=job.get("company") or "",
+        job_title=job.get("title") or "",
+        job_description_hash=sha256_text(job.get("description") or ""),
+        resume_version_id=(resume_row or {}).get("id", 0) if resume_row else 0,
+        profile_version=profile_version,
+        tailored_resume=tailored,
+        cover_letter=cover,
+        resume_json=resume_json or "",
+        resume_markdown=resume_markdown or "",
+        target_country=_target_country(job),
+        model=(ai_settings or {}).get("model", ""),
+        evidence_check_ok=True,
+        evidence_check_failures=[],
+        generated_by="prepare",
+    )
+    result = await ApplicationBuilder(base).build(
+        inputs, evidence_check_result=evidence_result)
+    await db.set_package_meta(
+        app_id, result.package_dir, inputs.fingerprint(),
+        result.metadata.get("status", "ready_for_review"))
+    await db.add_event(job["id"], "note", f"Package {result.action}: {result.package_dir}")
+    return result.to_dict()
 
 
 @router.post("/jobs/{job_id}/prepare")
@@ -34,6 +122,13 @@ async def prepare_application(request: Request, job_id: int):
             resume_text_override = resume["resume_text"]
     except Exception:
         pass
+    resume_evidence_text = resume_text_override
+    if not resume_evidence_text:
+        default_resume = await db.get_default_resume()
+        if default_resume:
+            resume_evidence_text = default_resume.get("resume_text", "")
+    target_contact_line = _target_contact_line(job)
+    target_country = _target_country(job)
     score = await db.get_score(job_id)
     match_reasons = score["match_reasons"] if score else []
     suggested_keywords = score["suggested_keywords"] if score else []
@@ -84,11 +179,39 @@ async def prepare_application(request: Request, job_id: int):
             match_reasons=match_reasons,
             suggested_keywords=suggested_keywords,
             resume_text=resume_text_override,
+            target_contact_line=target_contact_line,
+            target_country=target_country,
         )
-        check = checker.check(
-            result.get("tailored_resume", ""),
-            candidate_skill_values=store.skill_values_all_statuses(),
+        run_checker = checker
+        if resume_evidence_text:
+            from app.evidence_checker import EvidenceChecker
+            resume_lines = [
+                ln.strip() for ln in resume_evidence_text.splitlines()
+                if len(ln.strip()) >= 10
+            ]
+            run_checker = EvidenceChecker(
+                list(store.verified_values()) + resume_lines + [target_contact_line],
+                similarity_floor=getattr(checker, "similarity_floor", 0.18),
+                min_line_length=getattr(checker, "min_line_length", 20),
+            )
+        # Gate every form that could ship: the plain text AND, when the resume
+        # is structured, the flattened structure the MD/PDF/DOCX render from —
+        # so a claim living only in the structure can never pass unchecked.
+        from app.ats_resume import text_forms_for_evidence_check
+        forms = text_forms_for_evidence_check(
+            result.get("tailored_resume", ""), result.get("resume_json", "")
         )
+        if (result.get("resume_markdown") or "").strip():
+            forms.append(result["resume_markdown"])
+        forms = forms or [""]
+        check = None
+        for candidate in forms:
+            check = run_checker.check(
+                candidate,
+                candidate_skill_values=store.skill_values_all_statuses(),
+            )
+            if not check.ok:
+                break
         return result, check
 
     result, check = await _checked_prepare()
@@ -144,19 +267,33 @@ async def prepare_application(request: Request, job_id: int):
         app_id, status="prepared",
         tailored_resume=result.get("tailored_resume", ""),
         cover_letter=result.get("cover_letter", ""),
+        resume_json=result.get("resume_json", ""),
+        resume_markdown=result.get("resume_markdown", ""),
     )
     await db.add_event(job_id, "prepared", "Application prepared (evidence check passed)")
+    package = await _build_prepared_package(
+        request, job, app_id,
+        result.get("tailored_resume", ""),
+        result.get("cover_letter", ""),
+        result.get("resume_json", ""),
+        result.get("resume_markdown", ""),
+        check.to_dict(),
+    )
     return {
         "job_id": job_id, "status": "prepared",
         "tailored_resume": result.get("tailored_resume", ""),
         "cover_letter": result.get("cover_letter", ""),
+        "resume_json": result.get("resume_json", ""),
+        "resume_markdown": result.get("resume_markdown", ""),
         "evidence_check": check.to_dict(),
+        "package": package,
     }
 
 
 @router.get("/jobs/{job_id}/resume.pdf")
 async def download_resume_pdf(request: Request, job_id: int):
-    from app.pdf_generator import generate_resume_pdf
+    from app.ats_resume import build_resume_markdown, looks_like_resume_markdown, resume_json_to_text
+    from app.pdf_renderer import markdown_to_pdf
     db = _db(request)
     job = await db.get_job(job_id)
     if not job:
@@ -164,7 +301,14 @@ async def download_resume_pdf(request: Request, job_id: int):
     application = await db.get_application(job_id)
     if not application or not application.get("tailored_resume"):
         raise HTTPException(404, "No tailored resume prepared for this job")
-    pdf_bytes = generate_resume_pdf(application["tailored_resume"])
+    md = (application.get("resume_markdown") or "").strip()
+    stored = application.get("resume_json") or application["tailored_resume"]
+    if not looks_like_resume_markdown(md):
+        md = build_resume_markdown(stored)
+    pdf_bytes, _renderer = await markdown_to_pdf(
+        md, title=f"Resume - {job.get('company', '')}".strip(" -")
+        or "Resume", plain_text=resume_json_to_text(stored),
+        resume_country=_target_country(job))
     await db.add_event(job_id, "pdf_downloaded", "Resume PDF downloaded")
     # Sanitize filename — ASCII only, limit length
     safe_company = re.sub(r'[^\w\s-]', '', job.get('company', '')).strip()[:40]
@@ -199,7 +343,9 @@ async def download_cover_letter_pdf(request: Request, job_id: int):
 
 @router.get("/jobs/{job_id}/resume.docx")
 async def download_resume_docx(request: Request, job_id: int):
+    from app.ats_resume import build_resume_markdown, looks_like_resume_markdown
     from app.docx_generator import generate_resume_docx
+    from app.html_docx import generate_docx_from_markdown
     db = _db(request)
     job = await db.get_job(job_id)
     if not job:
@@ -207,7 +353,16 @@ async def download_resume_docx(request: Request, job_id: int):
     application = await db.get_application(job_id)
     if not application or not application.get("tailored_resume"):
         raise HTTPException(404, "No tailored resume prepared for this job")
-    docx_bytes = generate_resume_docx(application["tailored_resume"])
+    # Derive DOCX from the same Markdown the PDF renders, so the two agree.
+    md = (application.get("resume_markdown") or "").strip()
+    if not looks_like_resume_markdown(md):
+        md = build_resume_markdown(application.get("resume_json")
+                                   or application["tailored_resume"])
+    try:
+        docx_bytes = generate_docx_from_markdown(md, resume_country=_target_country(job))
+    except Exception:
+        logger.exception("Markdown DOCX failed; falling back to the text renderer")
+        docx_bytes = generate_resume_docx(application["tailored_resume"])
     await db.add_event(job_id, "docx_downloaded", "Resume DOCX downloaded")
     safe_company = re.sub(r'[^\w\s-]', '', job.get('company', '')).strip()[:40]
     safe_title = re.sub(r'[^\w\s-]', '', job.get('title', '')).strip()[:40]
@@ -217,9 +372,34 @@ async def download_resume_docx(request: Request, job_id: int):
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
+@router.get("/jobs/{job_id}/resume.md")
+async def download_resume_markdown(request: Request, job_id: int):
+    from app.ats_resume import build_resume_markdown, looks_like_resume_markdown
+    db = _db(request)
+    job = await db.get_job(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    application = await db.get_application(job_id)
+    if not application or not application.get("tailored_resume"):
+        raise HTTPException(404, "No tailored resume prepared for this job")
+    # Structured resume when we have one; legacy plain text otherwise.
+    md = (application.get("resume_markdown") or "").strip()
+    if not looks_like_resume_markdown(md):
+        md = build_resume_markdown(application.get("resume_json")
+                                   or application["tailored_resume"])
+    await db.add_event(job_id, "markdown_downloaded", "Resume Markdown downloaded")
+    safe_company = re.sub(r'[^\w\s-]', '', job.get('company', '')).strip()[:40]
+    safe_title = re.sub(r'[^\w\s-]', '', job.get('title', '')).strip()[:40]
+    filename = f"Resume - {safe_company} - {safe_title}.md"
+    return Response(content=md.encode("utf-8"), media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
 @router.get("/jobs/{job_id}/cover-letter.docx")
 async def download_cover_letter_docx(request: Request, job_id: int):
     from app.docx_generator import generate_cover_letter_docx
+    from app.html_docx import generate_docx_from_markdown
+    from app.markdown_generator import generate_cover_letter_markdown
     db = _db(request)
     job = await db.get_job(job_id)
     if not job:
@@ -227,17 +407,39 @@ async def download_cover_letter_docx(request: Request, job_id: int):
     application = await db.get_application(job_id)
     if not application or not application.get("cover_letter"):
         raise HTTPException(404, "No cover letter prepared for this job")
-    docx_bytes = generate_cover_letter_docx(
-        application["cover_letter"],
-        company=job.get("company", ""),
-        position=job.get("title", ""),
-    )
+    cl = application["cover_letter"]
+    try:
+        docx_bytes = generate_docx_from_markdown(
+            generate_cover_letter_markdown(cl), name=job.get("company", ""))
+    except Exception:
+        logger.exception("Markdown DOCX failed; falling back to the text renderer")
+        docx_bytes = generate_cover_letter_docx(
+            cl, company=job.get("company", ""), position=job.get("title", ""))
     await db.add_event(job_id, "docx_downloaded", "Cover letter DOCX downloaded")
     safe_company = re.sub(r'[^\w\s-]', '', job.get('company', '')).strip()[:40]
     safe_title = re.sub(r'[^\w\s-]', '', job.get('title', '')).strip()[:40]
     filename = f"Cover Letter - {safe_company} - {safe_title}.docx"
     return Response(content=docx_bytes,
                     media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/jobs/{job_id}/cover-letter.md")
+async def download_cover_letter_markdown(request: Request, job_id: int):
+    from app.markdown_generator import generate_cover_letter_markdown
+    db = _db(request)
+    job = await db.get_job(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    application = await db.get_application(job_id)
+    if not application or not application.get("cover_letter"):
+        raise HTTPException(404, "No cover letter prepared for this job")
+    md = generate_cover_letter_markdown(application["cover_letter"])
+    await db.add_event(job_id, "markdown_downloaded", "Cover letter Markdown downloaded")
+    safe_company = re.sub(r'[^\w\s-]', '', job.get('company', '')).strip()[:40]
+    safe_title = re.sub(r'[^\w\s-]', '', job.get('title', '')).strip()[:40]
+    filename = f"Cover Letter - {safe_company} - {safe_title}.md"
+    return Response(content=md.encode("utf-8"), media_type="text/markdown; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 

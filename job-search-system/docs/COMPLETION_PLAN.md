@@ -26,6 +26,21 @@
 | E2E (real server) | `USER_JOURNEY_E2E_REPORT.md` — **23/26** (shortened budgets; 3 non-regressions) |
 | Working tree | 3 sessions + stages 3–4 **uncommitted** |
 
+### 2026-10-04 update
+
+The live user-facing flow is stronger than the older readiness percentage suggests:
+
+- Scrape source fetching is now bounded-concurrent (`JOBAGENT_SCRAPE_CONCURRENCY`, default 4).
+- AI scoring now batches 20 jobs per call by default (`JOBAGENT_SCORE_BATCH_SIZE`, cap 25).
+- Prepare Application no longer saves blank AI output; empty resume/cover-letter output retries once and then fails loudly.
+- Prepare/package evidence checks now include the selected/default uploaded resume text as source truth.
+- Job `67` in Basil's real workspace was prepared, evidence-checked, rendered in Chromium, and packaged.
+- Markdown Resume export is now integrated: direct `.md` endpoints, `MD` UI buttons, and package `resume.md`/`cover_letter.md`.
+- Status/next-plan doc: `STATUS_AND_NEXT_PLAN_2026-10-04.md`.
+
+This does **not** complete the autonomous daily run. The main next milestone remains:
+wire all 10 daily-run stages and make the run build real packages.
+
 ### Why "autonomous" matters — the E2E exposed it
 `POST /api/daily-run/run` returns 10 stages where **8 say `skipped / not_implemented`**.
 The daily run builds **zero packages** and can never meet its target. That is the single

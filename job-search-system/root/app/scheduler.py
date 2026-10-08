@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 
 from app.circuit_breaker import CircuitBreaker
@@ -15,7 +16,8 @@ _consecutive_zero_runs: dict[str, int] = {}
 ZERO_RESULT_WARN_THRESHOLD = 3
 
 # Per-scraper hard timeout — a single hung source must never block the cycle.
-PER_SCRAPER_TIMEOUT = 120
+PER_SCRAPER_TIMEOUT = max(1, int(os.getenv("JOBAGENT_PER_SCRAPER_TIMEOUT", "60")))
+SCRAPER_CONCURRENCY = max(1, int(os.getenv("JOBAGENT_SCRAPE_CONCURRENCY", "4")))
 # Heartbeat the progress state every N listings inside the insert loop
 # so large payloads do not trip client-side stall detection.
 _HEARTBEAT_EVERY = 25
@@ -37,6 +39,56 @@ async def run_scrape_cycle(db: Database, scrapers: list, search_terms: list[str]
     def _heartbeat():
         if progress is not None:
             progress["last_updated_at"] = time.monotonic()
+
+    prepared = []
+    fetch_jobs = []
+    semaphore = asyncio.Semaphore(SCRAPER_CONCURRENCY)
+
+    async def _fetch(prepared_item: dict) -> None:
+        scraper_instance = prepared_item["scraper"]
+        source_name = prepared_item["source_name"]
+        src = prepared_item["src"]
+        async with semaphore:
+            if src is not None:
+                src["status"] = "running"
+            logger.info(f"Scraping {source_name}...")
+            t0 = time.monotonic()
+            prepared_item["started_at"] = t0
+            try:
+                listings = await asyncio.wait_for(
+                    scraper_instance.scrape(), timeout=PER_SCRAPER_TIMEOUT
+                )
+                prepared_item["listings"] = listings
+                prepared_item["ok"] = True
+                _scraper_breaker.record_success(f"scraper:{source_name}")
+                if src is not None:
+                    src["listings_found"] = len(listings)
+                    src["duration_ms"] = int((time.monotonic() - t0) * 1000)
+            except asyncio.TimeoutError:
+                prepared_item["listings"] = []
+                prepared_item["ok"] = False
+                if src is not None:
+                    src["status"] = "timeout"
+                    src["error"] = f"exceeded {PER_SCRAPER_TIMEOUT}s"
+                    src["duration_ms"] = int((time.monotonic() - t0) * 1000)
+                _scraper_breaker.record_failure(f"scraper:{source_name}")
+                logger.warning(f"{source_name}: timeout after {PER_SCRAPER_TIMEOUT}s")
+            except Exception as e:
+                prepared_item["listings"] = []
+                prepared_item["ok"] = False
+                if src is not None:
+                    src["status"] = "failed"
+                    src["error"] = str(e)[:200]
+                    src["duration_ms"] = int((time.monotonic() - t0) * 1000)
+                _scraper_breaker.record_failure(f"scraper:{source_name}")
+                logger.error(f"Scraper {source_name} failed: {e}")
+            finally:
+                if progress is not None:
+                    progress["completed"] = sum(
+                        1 for p in prepared if p.get("ok") is not None or p.get("skipped")
+                    )
+                    progress["new_jobs"] = total_new
+                    _heartbeat()
 
     for i, scraper_instance in enumerate(scrapers):
         if isinstance(scraper_instance, type):
@@ -80,35 +132,21 @@ async def run_scrape_cycle(db: Database, scrapers: list, search_terms: list[str]
                 _heartbeat()
             continue
 
-        logger.info(f"Scraping {source_name}...")
-        t0 = time.monotonic()
-        try:
-            listings = await asyncio.wait_for(
-                scraper_instance.scrape(), timeout=PER_SCRAPER_TIMEOUT
-            )
-            _scraper_breaker.record_success(f"scraper:{source_name}")
-        except asyncio.TimeoutError:
-            if src is not None:
-                src["status"] = "timeout"
-                src["error"] = f"exceeded {PER_SCRAPER_TIMEOUT}s"
-                src["duration_ms"] = int((time.monotonic() - t0) * 1000)
-            _scraper_breaker.record_failure(f"scraper:{source_name}")
-            logger.warning(f"{source_name}: timeout after {PER_SCRAPER_TIMEOUT}s")
-            if progress is not None:
-                progress["completed"] = i + 1
-                _heartbeat()
+        item = {"scraper": scraper_instance, "source_name": source_name, "src": src,
+                "listings": [], "ok": None, "skipped": False, "index": i}
+        prepared.append(item)
+        fetch_jobs.append(asyncio.create_task(_fetch(item)))
+
+    if fetch_jobs:
+        await asyncio.gather(*fetch_jobs)
+
+    for item in prepared:
+        if not item.get("ok"):
             continue
-        except Exception as e:
-            if src is not None:
-                src["status"] = "failed"
-                src["error"] = str(e)[:200]
-                src["duration_ms"] = int((time.monotonic() - t0) * 1000)
-            _scraper_breaker.record_failure(f"scraper:{source_name}")
-            logger.error(f"Scraper {source_name} failed: {e}")
-            if progress is not None:
-                progress["completed"] = i + 1
-                _heartbeat()
-            continue
+        source_name = item["source_name"]
+        src = item["src"]
+        listings = item["listings"]
+        t0 = item.get("started_at") or time.monotonic()
 
         # Pre-filter: skip listings from disallowed regions at scrape time
         from app.location_classifier import classify_location_rule_based, classify_work_type
@@ -220,7 +258,7 @@ async def run_scrape_cycle(db: Database, scrapers: list, search_terms: list[str]
         await db.mark_scraper_ran(source_name)
 
         if progress is not None:
-            progress["completed"] = i + 1
+            progress["completed"] = max(progress.get("completed", 0), item["index"] + 1)
             progress["new_jobs"] = total_new
             _heartbeat()
 

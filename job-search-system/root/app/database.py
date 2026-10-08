@@ -87,8 +87,9 @@ def _title_similarity(t1: str, t2: str) -> float:
 
 _COLUMN_ALLOWLISTS = {
     "applications": {
-        "status", "tailored_resume", "cover_letter", "email_draft", "applied_at",
-        "notes", "rejected_at", "offered_at", "withdrawn_at",
+        "status", "tailored_resume", "cover_letter", "resume_json",
+        "resume_markdown", "email_draft",
+        "applied_at", "notes", "rejected_at", "offered_at", "withdrawn_at",
         "response_received_at", "response_type", "days_to_response",
         "package_dir", "package_fingerprint", "package_status",
     },
@@ -867,6 +868,11 @@ class Database:
             "package_fingerprint": "ALTER TABLE applications ADD COLUMN package_fingerprint TEXT",
             "package_status": "ALTER TABLE applications ADD COLUMN package_status TEXT",
             "package_built_at": "ALTER TABLE applications ADD COLUMN package_built_at TEXT",
+            # ATS resume: the structured resume the Markdown/PDF/DOCX renderers
+            # read. NULL on rows prepared before the structured schema existed —
+            # those still render through the legacy plain-text path.
+            "resume_json": "ALTER TABLE applications ADD COLUMN resume_json TEXT",
+            "resume_markdown": "ALTER TABLE applications ADD COLUMN resume_markdown TEXT",
         }
         for col, sql in app_migrations.items():
             if col not in app_columns:
@@ -1402,7 +1408,7 @@ class Database:
         query = "SELECT * FROM notifications"
         if unread_only:
             query += " WHERE read = 0"
-        query += " ORDER BY created_at DESC LIMIT ?"
+        query += " ORDER BY created_at DESC, id DESC LIMIT ?"
         cursor = await self.db.execute(query, (limit,))
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
@@ -1808,6 +1814,44 @@ class Database:
                WHERE js.ai_score IS NULL AND j.dismissed = 0
                AND j.location_classified = 1
                AND j.eligibility_status = 'ELIGIBLE' LIMIT ?""", (limit,))
+        return [dict(r) for r in await cursor.fetchall()]
+
+    async def get_hybrid_scoreable_jobs(self, limit: int = 10000) -> list[dict]:
+        """Every ELIGIBLE job — with or WITHOUT an AI score.
+
+        The hybrid engine is deterministic and costs nothing, so it must cover
+        the whole eligible pool. Reusing `get_scoreable_jobs` for it was a real
+        bug: that method deliberately filters on `js.ai_score IS NULL` (it is
+        the AI entry point), so once the AI had scored every eligible job the
+        hybrid engine was handed an empty list and `hybrid_score` stayed **0**
+        on live data while all 240 eligible jobs carried an AI score.
+        """
+        cursor = await self.db.execute(
+            """SELECT j.* FROM jobs j
+               WHERE j.dismissed = 0
+               AND j.location_classified = 1
+               AND j.eligibility_status = 'ELIGIBLE' LIMIT ?""", (limit,))
+        return [dict(r) for r in await cursor.fetchall()]
+
+    async def get_ai_shortlist(self, limit: int = 100) -> list[dict]:
+        """The top `limit` AI-scoreable jobs, best hybrid score first.
+
+        AI scoring is the paid layer, so it runs on a shortlist rather than the
+        whole eligible pool. Jobs the hybrid engine has already ranked come
+        first (highest score first); jobs it has not reached yet sort AFTER them
+        instead of being dropped, so an unscored job can never be starved by a
+        big shortlist of already-ranked ones.
+        """
+        cursor = await self.db.execute(
+            """SELECT j.* FROM jobs j
+               LEFT JOIN job_scores js ON j.id = js.job_id
+               WHERE js.ai_score IS NULL AND j.dismissed = 0
+               AND j.location_classified = 1
+               AND j.eligibility_status = 'ELIGIBLE'
+               ORDER BY (js.hybrid_score IS NULL) ASC,
+                        js.hybrid_score DESC,
+                        j.created_at DESC
+               LIMIT ?""", (limit,))
         return [dict(r) for r in await cursor.fetchall()]
 
     async def get_eligibility_review_jobs(self, limit: int = 200) -> list[dict]:
@@ -2438,9 +2482,8 @@ class Database:
         return events
 
     async def get_events(self, job_id: int) -> list[dict]:
-        cursor = await self.db.execute(
-            "SELECT * FROM app_events WHERE job_id = ? ORDER BY created_at DESC", (job_id,)
-        )
+        cursor = await self.db.execute("SELECT * FROM app_events WHERE job_id = ? ORDER BY created_at DESC, id DESC",
+                (job_id,))
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
 
@@ -2968,7 +3011,8 @@ class Database:
     # Autofill history CRUD
     async def get_autofill_history(self, limit: int = 50) -> list[dict]:
         cursor = await self.db.execute(
-            "SELECT * FROM autofill_history ORDER BY created_at DESC LIMIT ?", (limit,))
+            "SELECT * FROM autofill_history ORDER BY created_at DESC, id DESC LIMIT ?",
+            (limit,))
         rows = await cursor.fetchall()
         result = []
         for r in rows:
@@ -3410,7 +3454,8 @@ class Database:
     # --- Job Alerts CRUD ---
 
     async def get_job_alerts(self) -> list[dict]:
-        cursor = await self.db.execute("SELECT * FROM job_alerts ORDER BY created_at DESC")
+        cursor = await self.db.execute(
+            "SELECT * FROM job_alerts ORDER BY created_at DESC, id DESC")
         rows = await cursor.fetchall()
         results = []
         for r in rows:

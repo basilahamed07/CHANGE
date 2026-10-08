@@ -71,51 +71,56 @@ class TestScoreJobTransientFailures:
         assert result["score"] == 85
 
 
-class TestFallbackIndividual:
-    """_fallback_individual should skip None results and abort on consecutive failures."""
+class TestBatchRecovery:
+    """An unusable batch is recovered by HALVING it, never by one call per job.
+
+    Replaces the old `_fallback_individual` tests: that one-call-per-job
+    fallback was the defect — an oversized batch cost more API calls than no
+    batching at all.
+    """
 
     @pytest.mark.asyncio
-    async def test_skips_none_results(self):
+    async def test_bisect_recovers_jobs_and_never_fabricates(self):
         mock_client = MagicMock()
-        call_count = 0
-
-        async def alternating_chat(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count % 2 == 0:
-                raise RuntimeError("Circuit breaker open")
-            return json.dumps({
-                "score": 75, "reasons": ["ok"], "concerns": [], "keywords": []
-            })
-
-        mock_client.chat = alternating_chat
         mock_client.provider = "anthropic"
         mock_client.base_url = ""
+        call_count = 0
+
+        async def truncating_chat(prompt, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            n = prompt.count("--- JOB ")
+            if n > 2:
+                return "["          # truncated batch: unusable, not scorable
+            return json.dumps([
+                {"job_index": i, "score": 75, "role_match": True,
+                 "reasons": ["ok"], "concerns": [], "keywords": []}
+                for i in range(n)])
+
+        mock_client.chat = truncating_chat
         matcher = JobMatcher(client=mock_client, resume_text=SAMPLE_RESUME)
-        jobs = [
-            {"id": 1, "description": "Job 1"},
-            {"id": 2, "description": "Job 2"},
-            {"id": 3, "description": "Job 3"},
-            {"id": 4, "description": "Job 4"},
-        ]
-        results = await matcher._fallback_individual(jobs)
-        # Only successful scores should be in results
-        assert all(r["score"] > 0 for r in results)
-        assert all("job_id" in r for r in results)
+        jobs = [{"id": i, "description": f"Job {i}"} for i in range(4)]
+        results = await matcher.score_batch(jobs)
+        # Every job scored, none invented, every row carrying its own id.
+        assert len(results) == 4
+        assert all(r["score"] == 75 for r in results)
+        assert sorted(r["job_id"] for r in results) == [0, 1, 2, 3]
+        # 4 jobs in 3 calls (one batch of 4 -> two batches of 2), not 4 calls.
+        assert call_count == 3
+        assert matcher.stats["individual"] == 0
 
     @pytest.mark.asyncio
-    async def test_aborts_after_3_consecutive_failures(self):
+    async def test_dead_provider_costs_one_call(self):
         mock_client = MagicMock()
         mock_client.chat = AsyncMock(side_effect=RuntimeError("Circuit breaker open"))
         mock_client.provider = "anthropic"
         mock_client.base_url = ""
         matcher = JobMatcher(client=mock_client, resume_text=SAMPLE_RESUME)
-        jobs = [{"id": i, "description": f"Job {i}"} for i in range(10)]
-        results = await matcher._fallback_individual(jobs)
-        assert results == []
-        # Should have stopped after 3 failures, not tried all 10
-        assert mock_client.chat.call_count == 3
-
+        jobs = [{"id": i, "description": f"Job {i}"} for i in range(64)]
+        assert await matcher.score_batch(jobs) == []
+        # 64 jobs, ONE call: a smaller batch cannot rescue a dead provider.
+        assert mock_client.chat.call_count == 1
+        assert matcher.stats["aborted"] == 1
 
 class TestScoreBatchFailure:
     """score_batch should return empty list when all scoring fails."""

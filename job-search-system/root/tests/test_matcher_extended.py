@@ -74,14 +74,20 @@ async def test_score_batch_uses_batch_prompt(mock_client):
     assert results[1]["score"] == 60
 
 
-async def test_score_batch_fallback_on_error(mock_client):
+async def test_score_batch_recovery_on_unusable_response(mock_client):
+    """An unusable batch response is recovered by HALVING the batch.
+
+    A provider *exception* now aborts instead (see
+    test_provider_outage_costs_one_call_not_one_per_job) because retrying a
+    smaller batch cannot rescue a dead provider.
+    """
     call_count = 0
 
     async def side_effect(prompt, **kwargs):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            raise Exception("batch parse failed")
+            return "not json at all"      # unusable batch
         return _make_response(50)
 
     mock_client.chat = AsyncMock(side_effect=side_effect)
@@ -90,6 +96,7 @@ async def test_score_batch_fallback_on_error(mock_client):
     results = await matcher.score_batch(jobs)
     assert len(results) == 2
     assert all(r["score"] == 50 for r in results)
+    assert all("job_id" in r for r in results)
 
 
 async def test_parse_batch_response_dict_wrapper(mock_client):
@@ -122,10 +129,4 @@ async def test_parse_batch_response_missing_entry(mock_client):
     assert all(r["score"] != 0 for r in results)
 
 
-async def test_batch_score_individual_with_delay(mock_client):
-    mock_client.chat = AsyncMock(return_value=_make_response(70))
-    matcher = JobMatcher(mock_client, SAMPLE_RESUME)
-    jobs = [{"id": 1, "description": "a"}, {"id": 2, "description": "b"}]
-    results = await matcher.batch_score(jobs, delay=0)
-    assert len(results) == 2
-    assert mock_client.chat.call_count == 2
+

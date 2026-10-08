@@ -141,6 +141,26 @@ async def put_config(request: Request):
             "prefs": await db.get_hybrid_prefs()}
 
 
+@router.get("/report")
+async def score_report(request: Request, write: bool = False, limit: int | None = None):
+    """The checkable score report: coverage, integrity checks, one row per job.
+
+    Read-only (no scoring, no model calls). `?write=true` also drops the
+    Markdown + JSON artifacts under `docs/score/` so the report can be kept as
+    evidence instead of only being viewed.
+    """
+    from pathlib import Path
+
+    from app.score_report import build_score_report, write_score_report
+
+    db = _db(request)
+    report = await build_score_report(db, limit=limit)
+    if write:
+        root = Path(__file__).resolve().parents[2]
+        report["written"] = write_score_report(report, root)
+    return report
+
+
 @router.get("/top-jobs")
 async def top_jobs(request: Request, limit: int = 10, min_score: int = 60):
     """Highest-scoring eligible jobs with component breakdowns."""

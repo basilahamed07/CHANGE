@@ -18,6 +18,7 @@ from app.adapters.ashby import AshbyAdapter
 from app.adapters.smartrecruiters import SmartRecruitersAdapter
 from app.adapters.jooble import JoobleAdapter
 from app.adapters.adzuna import AdzunaAdapter
+from app.adapters.tavily_search import TavilySearchAdapter
 from app.adapters.reed import ReedAdapter
 from app.adapters.country_scoped import (
     ArbeitnowAdapter,
@@ -42,6 +43,7 @@ ALL_ADAPTERS = [
     SmartRecruitersAdapter,
     JoobleAdapter,
     AdzunaAdapter,
+    TavilySearchAdapter,
     ReedAdapter,
     ArbeitnowAdapter,
     RemotiveAdapter,

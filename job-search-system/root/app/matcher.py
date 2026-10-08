@@ -182,11 +182,77 @@ def _format_candidate_focus(focus: dict | None) -> str:
     return "\n".join(lines) if lines else "(not provided — infer from resume)"
 
 
+# --- Batch sizing (measured, not guessed) ---------------------------------
+# Measured 2026-10-07 from 240 real AI-scored rows in `job_scores`: one job's
+# output entry (job_index/score/role_match/reasons/concerns/keywords) is
+# 411-1,306 JSON chars — p50 743, p90 920 — i.e. ~186 / ~230 output tokens.
+# The provider cap is 16,384 (`AIClient._MAX_OUTPUT`), so the largest batch
+# that truly fits is ~71 jobs at the p90 figure.
+#
+# The old code asked for `512 * len(jobs)` tokens. At 100 jobs that is 51,200
+# and at 200 it is 102,400 — both silently CLAMPED to 16,384 by the client, so
+# the batch was never given the room it asked for. The JSON came back
+# truncated, parsing failed, and the batch degraded into one API call per job.
+# Batch size must therefore be derived from measured output, never from want.
+MEASURED_OUTPUT_TOKENS_PER_JOB = 230   # p90 of the live distribution
+BATCH_SAFETY_FACTOR = 0.9              # headroom for an unusually verbose job
+MAX_BISECT_DEPTH = 6                   # 64 jobs -> 1, then single calls
+
+
 class JobMatcher:
     def __init__(self, client: AIClient, resume_text: str, candidate_focus: dict | None = None):
         self.client = client
         self.resume_text = resume_text
         self.candidate_focus = candidate_focus
+        # Per-run counters so the score report can state what actually
+        # happened (calls made, batches halved, provider aborts) instead of
+        # inferring it. A silent one-call-per-job fallback is the defect this
+        # replaces, so it must be observable.
+        self.stats = {"calls": 0, "bisects": 0, "individual": 0, "aborted": 0}
+
+    def _output_cap(self) -> int:
+        """Largest completion the configured provider accepts.
+
+        Defensive about the client shape: test doubles and alternative clients
+        may not expose the table at all, so fall back to the conservative 4096
+        rather than trusting whatever attribute lookup returns.
+        """
+        table = getattr(self.client, "_MAX_OUTPUT", None)
+        if not isinstance(table, dict):
+            return 4096
+        provider = getattr(self.client, "provider", "") or ""
+        if not isinstance(provider, str):
+            provider = ""
+        return int(table.get(provider, 4096))
+
+    def jobs_per_call(self, target: int | None = None) -> int:
+        """How many jobs fit in ONE completion without truncating.
+
+        Derived from the measured p90 output per job and the provider's own
+        cap, so a requested batch larger than the cap can never be issued.
+        """
+        budget = self._output_cap() * BATCH_SAFETY_FACTOR
+        fits = max(1, int(budget // MEASURED_OUTPUT_TOKENS_PER_JOB))
+        if target is None:
+            return fits
+        return max(1, min(int(target), fits))
+
+    def plan_batches(self, jobs: list[dict], target: int | None = None) -> list[list[dict]]:
+        """Split jobs into batches that each fit inside the provider cap.
+
+        `target` is the caller's wish (e.g. 100); the cap wins when the two
+        disagree, and the split is logged so an over-large request is visible
+        rather than silently truncated.
+        """
+        if not jobs:
+            return []
+        size = self.jobs_per_call(target)
+        if target and size < int(target):
+            logger.info(
+                "Score batch target %d clamped to %d jobs/call "
+                "(%d-token cap, %d measured tokens/job)",
+                int(target), size, self._output_cap(), MEASURED_OUTPUT_TOKENS_PER_JOB)
+        return [jobs[i:i + size] for i in range(0, len(jobs), size)]
 
     async def score_job(self, job_description: str, resume_text: str | None = None) -> dict | None:
         """Score a job against the resume. Returns None on transient failures."""
@@ -225,11 +291,19 @@ class JobMatcher:
             # Return None for transient errors so caller can skip/retry
             return None
 
-    async def score_batch(self, jobs: list[dict]) -> list[dict]:
+    async def score_batch(self, jobs: list[dict], depth: int = 0) -> list[dict]:
         """Score a batch of jobs. Returns ONLY jobs actually scored.
 
         Never padded and never fabricated: a job the model did not score is
         absent from the result and stays unscored for the next cycle.
+
+        Failure policy (redesigned 2026-10-07):
+          * provider/infrastructure failure -> return [] and let the caller
+            abort. A smaller batch cannot rescue a dead provider, so this now
+            costs ONE call rather than one call per job.
+          * unusable/truncated response -> HALVE the batch (`_bisect`). The old
+            path fell through to one call per job, so an oversized batch cost
+            MORE API calls than no batching at all.
         """
         if not jobs:
             return []
@@ -243,19 +317,59 @@ class JobMatcher:
             role_taxonomy=ROLE_TAXONOMY,
             jobs_block=jobs_block,
         )
-        max_tokens = 512 * len(jobs)
+        # Budget from the measured per-job output (the client clamps to the
+        # provider cap regardless, so asking for more only creates truncation).
+        max_tokens = MEASURED_OUTPUT_TOKENS_PER_JOB * len(jobs) + 256
+        self.stats["calls"] += 1
         try:
             raw = await self.client.chat(prompt, max_tokens=max_tokens)
+        except Exception as e:
+            self.stats["aborted"] += 1
+            logger.error(
+                "Batch scoring aborted after a provider failure (not retried "
+                "smaller): %s", e)
+            return []
+        try:
             results = self._parse_batch_response(raw, jobs)
         except Exception as e:
-            logger.error(f"Batch scoring failed, falling back to individual: {e}")
-            return await self._fallback_individual(jobs)
+            logger.warning(
+                "Batch response unusable (%s) — halving %d jobs instead of "
+                "falling back to one call per job", e, len(jobs))
+            return await self._bisect(jobs, depth)
         if not results:
-            # Parsed cleanly but produced nothing usable — fall back rather than
-            # letting an empty batch look like a completed one.
-            logger.warning("Batch response yielded no usable scores, falling back to individual")
-            return await self._fallback_individual(jobs)
+            # Parsed cleanly but produced nothing usable — halving beats
+            # letting an empty batch look like a completed one, and beats N calls.
+            logger.warning(
+                "Batch response yielded no usable scores — halving %d jobs", len(jobs))
+            return await self._bisect(jobs, depth)
         return results
+
+    async def _bisect(self, jobs: list[dict], depth: int = 0) -> list[dict]:
+        """Recover an unusable batch by HALVING it — never by one call per job.
+
+        The failure case costs O(log n) extra calls instead of O(n), and drops
+        to a single `score_job` call only once a batch is down to one job.
+        """
+        self.stats["bisects"] += 1
+        if not jobs:
+            return []
+        if len(jobs) == 1:
+            self.stats["individual"] += 1
+            result = await self.score_job(jobs[0]["description"])
+            if result is None:
+                return []
+            result["job_id"] = jobs[0]["id"]
+            return [result]
+        if depth >= MAX_BISECT_DEPTH:
+            logger.warning(
+                "Bisect depth limit reached with %d jobs still unscored — "
+                "leaving them for the next cycle", len(jobs))
+            return []
+        mid = len(jobs) // 2
+        out: list[dict] = []
+        for half in (jobs[:mid], jobs[mid:]):
+            out.extend(await self.score_batch(half, depth + 1))
+        return out
 
     @staticmethod
     def _extract_array(raw: str) -> list:
@@ -355,31 +469,3 @@ class JobMatcher:
                 "left unscored for the next cycle (not fabricated)")
         return results
 
-    async def _fallback_individual(self, jobs: list[dict]) -> list[dict]:
-        results = []
-        consecutive_failures = 0
-        for job in jobs:
-            result = await self.score_job(job["description"])
-            if result is None:
-                consecutive_failures += 1
-                if consecutive_failures >= 3:
-                    logger.warning("3 consecutive scoring failures, aborting batch fallback")
-                    break
-                continue
-            consecutive_failures = 0
-            result["job_id"] = job["id"]
-            results.append(result)
-            await asyncio.sleep(0)  # Yield between individual scores
-        return results
-
-    async def batch_score(self, jobs: list[dict], delay: float = 2.0) -> list[dict]:
-        results = []
-        for job in jobs:
-            result = await self.score_job(job["description"])
-            if result is None:
-                continue
-            result["job_id"] = job["id"]
-            results.append(result)
-            if job != jobs[-1] and delay > 0:
-                await asyncio.sleep(delay)
-        return results

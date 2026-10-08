@@ -57,10 +57,13 @@ async def prepare_all_queued(request: Request):
                 resume = await db.get_resume(item["resume_id"])
                 if resume:
                     resume_override = resume["resume_text"]
+            from app.routers.tailoring import _target_contact_line, _target_country
             result = await tailor.prepare(
                 job_description=job["description"] or "",
                 match_reasons=reasons, suggested_keywords=keywords,
                 resume_text=resume_override,
+                target_contact_line=_target_contact_line(job),
+                target_country=_target_country(job),
             )
             application = await db.get_application(item["job_id"])
             if not application:
@@ -71,6 +74,8 @@ async def prepare_all_queued(request: Request):
                 app_id, status="prepared",
                 tailored_resume=result.get("tailored_resume", ""),
                 cover_letter=result.get("cover_letter", ""),
+                resume_json=result.get("resume_json", ""),
+                resume_markdown=result.get("resume_markdown", ""),
             )
             await db.update_queue_status(item["id"], "ready")
             prepared += 1

@@ -6,7 +6,7 @@ Key guarantees:
   2. Country scoping: listings outside the target country are DROPPED.
   3. Keyed adapters (jooble/adzuna) are honest no-ops without keys —
      SOURCE_FAILURE with a clear error, never a crash.
-  4. All 15 adapters registered; keyed ones present even without keys.
+  4. All adapters registered; keyed ones present even without keys.
   5. Legacy scrapers still work unchanged (base.py method param is
      backward-compatible).
 
@@ -43,9 +43,10 @@ def test_adapters_registered_count():
     # Stage-1 upgrade 2026-09-30: 19 → 20 — the audit found builtin.py's
     # scraper existed since M1 but was never wired into discovery; the
     # BuiltinAdapter closes that gap (CA/US tech-city coverage).
-    assert len(ALL_ADAPTERS) == 20
+    assert len(ALL_ADAPTERS) == 21
     assert {"greenhouse", "lever", "ashby", "smartrecruiters",
-            "jooble", "adzuna", "reed", "arbeitnow", "remotive", "jobicy",
+            "jooble", "adzuna", "tavily_search",
+            "reed", "arbeitnow", "remotive", "jobicy",
             "weworkremotely", "remoteok", "himalayas", "4dayweek",
             "landingjobs", "recruitee", "mycareersfuture", "wellfound",
             "builtin",

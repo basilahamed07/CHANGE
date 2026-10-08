@@ -59,6 +59,41 @@ async def build_package(request: Request, job_id: int, refresh: bool = False,
     tailor = ai["tailor"]
     store = ai["evidence_store"]
     checker = ai["evidence_checker"]
+    resume_row = await db.get_default_resume()
+    from app.routers.tailoring import _target_contact_line, _target_country
+    target_contact_line = _target_contact_line(job)
+    target_country = _target_country(job)
+
+    def _run_evidence_check(text: str, resume_json: str = "", resume_markdown: str = ""):
+        run_checker = checker
+        resume_text = (resume_row or {}).get("resume_text", "") if resume_row else ""
+        if resume_text:
+            from app.evidence_checker import EvidenceChecker
+            resume_lines = [
+                ln.strip() for ln in resume_text.splitlines()
+                if len(ln.strip()) >= 10
+            ]
+            run_checker = EvidenceChecker(
+                list(store.verified_values()) + resume_lines + [target_contact_line],
+                similarity_floor=getattr(checker, "similarity_floor", 0.18),
+                min_line_length=getattr(checker, "min_line_length", 20),
+            )
+        # Gate every form that could ship — the plain text and, when the resume
+        # is structured, the flattened structure the renderers actually use.
+        from app.ats_resume import text_forms_for_evidence_check
+        forms = text_forms_for_evidence_check(text, resume_json)
+        if (resume_markdown or "").strip():
+            forms.append(resume_markdown)
+        forms = forms or [""]
+        check = None
+        for candidate in forms:
+            check = run_checker.check(
+                candidate,
+                candidate_skill_values=store.skill_values_all_statuses(),
+            )
+            if not check.ok:
+                break
+        return check
     if store is None or checker is None:
         raise HTTPException(503, "Evidence store unavailable — packaging blocked (fail-closed)")
 
@@ -73,20 +108,28 @@ async def build_package(request: Request, job_id: int, refresh: bool = False,
             job_description=job["description"] or "",
             match_reasons=(score or {}).get("match_reasons", []),
             suggested_keywords=(score or {}).get("suggested_keywords", []),
+            target_contact_line=target_contact_line,
+            target_country=target_country,
         )
         tailored = result.get("tailored_resume", "")
         cover = result.get("cover_letter", "")
-        check = checker.check(tailored, candidate_skill_values=store.skill_values_all_statuses())
+        resume_json = result.get("resume_json") or ""
+        resume_markdown = result.get("resume_markdown") or ""
+        check = _run_evidence_check(tailored, resume_json, resume_markdown)
         if not check.ok:
             logger.warning("Package build evidence fail job %s — regenerating once", job_id)
             result = await tailor.prepare(
                 job_description=job["description"] or "",
                 match_reasons=(score or {}).get("match_reasons", []),
                 suggested_keywords=(score or {}).get("suggested_keywords", []),
+                target_contact_line=target_contact_line,
+                target_country=target_country,
             )
             tailored = result.get("tailored_resume", "")
             cover = result.get("cover_letter", "")
-            check = checker.check(tailored, candidate_skill_values=store.skill_values_all_statuses())
+            resume_json = result.get("resume_json") or ""
+            resume_markdown = result.get("resume_markdown") or ""
+            check = _run_evidence_check(tailored, resume_json, resume_markdown)
         evidence_result = check.to_dict()
 
         # Persist the regenerated text — explicit user request (same as /prepare).
@@ -96,7 +139,9 @@ async def build_package(request: Request, job_id: int, refresh: bool = False,
         else:
             app_id = application["id"]
         await db.update_application(app_id, status="prepared",
-                                    tailored_resume=tailored, cover_letter=cover)
+                                    tailored_resume=tailored, cover_letter=cover,
+                                    resume_json=resume_json,
+                                    resume_markdown=resume_markdown)
         generated_by = "regenerated"
     else:
         # DEFAULT (refresh is a legacy alias): package the reviewed text as-is.
@@ -108,7 +153,9 @@ async def build_package(request: Request, job_id: int, refresh: bool = False,
             })
         tailored = stored_text
         cover = (app_row or {}).get("cover_letter") or ""
-        check = checker.check(tailored, candidate_skill_values=store.skill_values_all_statuses())
+        resume_json = (app_row or {}).get("resume_json") or ""
+        resume_markdown = (app_row or {}).get("resume_markdown") or ""
+        check = _run_evidence_check(tailored, resume_json, resume_markdown)
         evidence_result = check.to_dict()
         generated_by = "stored"
 
@@ -119,7 +166,6 @@ async def build_package(request: Request, job_id: int, refresh: bool = False,
             "message": "Package refused: generated text has unverified claims. Nothing saved.",
         })
 
-    resume_row = await db.get_default_resume()
     ai_settings = await db.get_ai_settings()
     builder = _builder(request)
     inputs = PackageInputs(
@@ -131,6 +177,9 @@ async def build_package(request: Request, job_id: int, refresh: bool = False,
         profile_version=_profile_version(request),
         tailored_resume=tailored,
         cover_letter=cover,
+        resume_json=resume_json,
+        resume_markdown=resume_markdown,
+        target_country=target_country,
         model=(ai_settings or {}).get("model", ""),
         evidence_check_ok=True,
         evidence_check_failures=[],
@@ -176,7 +225,8 @@ async def list_packages(request: Request):
 
 @router.get("/jobs/{job_id}/download/{filename}")
 async def download_file(request: Request, job_id: int, filename: str):
-    if filename not in {"resume.docx", "resume.txt", "cover_letter.docx",
+    if filename not in {"resume.docx", "resume.md", "resume.pdf", "resume.txt",
+                        "cover_letter.docx", "cover_letter.md", "cover_letter.pdf",
                         "cover_letter.txt", "metadata.json"}:
         raise HTTPException(400, "Unknown package file")
     db = _db(request)
@@ -186,9 +236,14 @@ async def download_file(request: Request, job_id: int, filename: str):
     path = os.path.join(meta["package_dir"], filename)
     if not os.path.exists(path):
         raise HTTPException(404, f"{filename} not in package")
-    media = ("application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-             if filename.endswith(".docx") else
-             "application/pdf" if filename.endswith(".pdf") else "text/plain")
-    if filename.endswith(".json"):
+    if filename.endswith(".docx"):
+        media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    elif filename.endswith(".pdf"):
+        media = "application/pdf"
+    elif filename.endswith(".md"):
+        media = "text/markdown; charset=utf-8"
+    elif filename.endswith(".json"):
         media = "application/json"
+    else:
+        media = "text/plain; charset=utf-8"
     return FileResponse(path, media_type=media, filename=filename)

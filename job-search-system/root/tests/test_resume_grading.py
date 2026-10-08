@@ -27,6 +27,24 @@ from app.evidence_store import EvidenceStore
 from app.resume_analyzer import analyze_resume, parse_resume_to_profile
 
 
+@pytest.fixture(autouse=True)
+def _isolate_ai_client_class_state():
+    """Isolate `AIClient._reasoning_providers`, which is CLASS-level state.
+
+    Every test in a pytest worker shares that set. A test elsewhere in the
+    suite that lets a reasoning model be detected leaves "deepseek" in it,
+    which changes `output_budget()` (the floor becomes the provider cap instead
+    of the sane 256) and made the DeepSeek JSON-mode test below fail during a
+    full-suite run while passing on its own. This is flaky, order-dependent
+    cross-file state leak — snapshot and restore it per test.
+    """
+    saved = set(AIClient._reasoning_providers)
+    AIClient._reasoning_providers.clear()
+    yield
+    AIClient._reasoning_providers.clear()
+    AIClient._reasoning_providers.update(saved)
+
+
 RESUME_TEXT = (
     "BASIL AHAMED H\n"
     "AI Engineer | Production AI and ML Systems | Python\n"

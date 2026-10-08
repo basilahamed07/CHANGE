@@ -176,3 +176,60 @@ async def test_clear_failed_scores_keeps_a_hybrid_score_but_frees_the_job(db):
     assert row["hybrid_score"] == 44          # hybrid survived
     assert row["match_score"] == 44           # falls back to the effective hybrid
     assert [j["id"] for j in await db.get_scoreable_jobs()] == [job_id]
+
+
+# ---------------- Phase 3: free layer first, AI on a shortlist ----------------
+
+async def test_hybrid_pass_is_not_starved_by_an_ai_score(db):
+    """THE Phase-3 regression: `hybrid_score` was 0 on live data.
+
+    The hybrid pass reused `get_scoreable_jobs`, which filters on
+    `js.ai_score IS NULL` because it is the AI entry point. Once the AI had
+    scored every eligible job the free engine was handed an empty list, so it
+    never produced a single score while the paid layer scored all 240. The free
+    layer must see the whole eligible pool; only the AI layer is shortlisted.
+    """
+    job_id = await _job(db)
+    await _make_eligible(db, job_id)
+    await db.insert_score(job_id, 80, ["strong"], [], ["python"], role_match=True)
+
+    # AI entry point: correctly excludes a job that already has an AI score.
+    assert await db.get_scoreable_jobs() == []
+    # Free layer: must still see it (deterministic, costs nothing).
+    assert [j["id"] for j in await db.get_hybrid_scoreable_jobs()] == [job_id]
+
+
+async def test_ai_shortlist_puts_the_best_hybrid_scores_first(db):
+    low = await _job(db, "low")
+    high = await _job(db, "high")
+    unranked = await _job(db, "unranked")
+    for jid in (low, high, unranked):
+        await _make_eligible(db, jid)
+    await db.upsert_hybrid_score(low, 20, [], [], [], True, {"skills": 20.0}, [])
+    await db.upsert_hybrid_score(high, 90, [], [], [], True, {"skills": 90.0}, [])
+
+    order = [j["id"] for j in await db.get_ai_shortlist(limit=3)]
+    # Best hybrid first; the not-yet-ranked job sorts after them, never dropped.
+    assert order == [high, low, unranked]
+
+
+async def test_ai_shortlist_honours_the_limit(db):
+    ranked = []
+    for i in range(4):
+        jid = await _job(db, str(i))
+        await _make_eligible(db, jid)
+        await db.upsert_hybrid_score(jid, 10 * (i + 1), [], [], [], True,
+                                     {"skills": float(10 * (i + 1))}, [])
+        ranked.append(jid)
+
+    assert [j["id"] for j in await db.get_ai_shortlist(limit=2)] == [ranked[3], ranked[2]]
+
+
+async def test_ai_shortlist_excludes_jobs_that_already_have_an_ai_score(db):
+    job_id = await _job(db)
+    await _make_eligible(db, job_id)
+    await db.upsert_hybrid_score(job_id, 99, [], [], [], True, {"skills": 99.0}, [])
+
+    assert [j["id"] for j in await db.get_ai_shortlist(limit=10)] == [job_id]
+    await db.insert_score(job_id, 70, [], [], [], role_match=True)
+    assert await db.get_ai_shortlist(limit=10) == []

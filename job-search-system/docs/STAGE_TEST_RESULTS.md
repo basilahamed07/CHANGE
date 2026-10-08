@@ -11,6 +11,24 @@
 
 ## 1. Test suites
 
+### 2026-10-04 focused regression runs
+
+These were run after the scrape/scoring/tailoring/package/Markdown-export fixes.
+
+| # | Command | Result |
+|---|---|---|
+| 2026-10-04.1 | `uv run pytest tests/test_api.py::test_upload_resume_appears_in_resumes_list tests/test_api.py::test_upload_resume_pdf tests/test_scheduler.py tests/test_scrape_robust.py tests/test_scoring.py tests/test_matcher_extended.py tests/test_tailoring.py tests/test_resume_grading.py tests/test_evidence.py tests/test_personal_facts.py tests/test_api.py::test_prepare_with_mock_tailor tests/test_application_builder.py -q` | **125 passed** |
+| 2026-10-04.2 | `.venv\\Scripts\\python.exe -m pytest tests/test_markdown_generator.py tests/test_application_builder.py tests/test_docx_export.py tests/test_api.py::test_prepare_with_mock_tailor -q` | **30 passed** |
+| 2026-10-04.3 | `node --check app/static/js/views/detail.js` | **passed** |
+| 2026-10-04.4 | Python compile checks for modified backend modules | **passed** |
+
+Live checks:
+
+- Authenticated `POST /api/jobs/67/prepare` -> **200**, stored tailored resume **4326 chars**, cover letter **1540 chars**, evidence OK.
+- Authenticated `GET /api/jobs/67/resume.md` -> **200 text/markdown**.
+- Authenticated `GET /api/jobs/67/cover-letter.md` -> **200 text/markdown**.
+- Logged-in Chromium smoke on `#/job/67` found `TAILORED RESUME`, `COVER LETTER`, and two prepared textareas.
+
 | # | Command | Result |
 |---|---|---|
 | 1 | `uv run pytest tests/test_scoring.py -q` | **23 passed** |

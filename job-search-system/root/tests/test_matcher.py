@@ -48,18 +48,30 @@ async def test_matcher_handles_api_error():
     result = await matcher.score_job(SAMPLE_JOB_DESC)
     assert result is None  # Transient errors return None, not score=0
 
-@pytest.mark.asyncio
-async def test_matcher_batch_score():
+def test_matcher_batch_size_is_clamped_to_the_provider_cap():
+    """A requested batch may never exceed what ONE completion can hold.
+
+    Regression for the 2026-10-07 scoring redesign: asking for 200 jobs used to
+    request `512 * 200` = 102,400 output tokens, which the client clamped to
+    the provider cap. The response then truncated, parsing failed, and the batch
+    degraded into one API call per job — the opposite of batching.
+    """
     mock_client = MagicMock()
-    mock_client.chat = AsyncMock(return_value=json.dumps(MOCK_CLAUDE_RESPONSE))
+    mock_client.provider = "deepseek"
+    mock_client._MAX_OUTPUT = {"deepseek": 16384}
 
     matcher = JobMatcher(client=mock_client, resume_text=SAMPLE_RESUME)
-    jobs = [{"id": 1, "description": "job 1"}, {"id": 2, "description": "job 2"}]
-    results = await matcher.batch_score(jobs, delay=0)
-    assert len(results) == 2
-    assert all(r["score"] == 88 for r in results)
-    assert results[0]["job_id"] == 1
-    assert results[1]["job_id"] == 2
+    per_call = matcher.jobs_per_call()
+    assert per_call < 100                                   # 16,384 / 230 measured
+    assert per_call >= 50                                   # not needlessly timid
+    assert matcher.jobs_per_call(target=200) == per_call     # the cap wins
+    assert matcher.jobs_per_call(target=5) == 5              # a small wish is honoured
+
+    jobs = [{"id": i, "description": "job"} for i in range(250)]
+    batches = matcher.plan_batches(jobs, target=200)
+    assert all(len(b) <= per_call for b in batches)
+    assert sum(len(b) for b in batches) == 250               # nothing dropped
+    assert len(batches) > 1
 
 @pytest.mark.asyncio
 async def test_matcher_strips_markdown():

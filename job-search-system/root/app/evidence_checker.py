@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
 def _token_set(text: str) -> set[str]:
@@ -44,6 +44,41 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     if not a or not b:
         return 0.0
     return len(a & b) / len(a | b)
+
+
+_SECTION_HEADINGS = {
+    "summary", "professional summary", "experience", "professional experience",
+    "work experience", "skills", "technical skills", "projects", "education",
+    "certifications", "achievements", "key achievements", "contact",
+    "links", "profile",
+}
+_CONTACT_RE = re.compile(
+    r"@|https?://|linkedin\.com|github\.com|\+?\d[\d\s().-]{6,}",
+    re.IGNORECASE,
+)
+
+
+def _clean_line(line: str) -> str:
+    return line.strip(" -*â€¢\t")
+
+
+def _is_formatting_or_header_line(line: str) -> bool:
+    """Skip resume chrome; gate the factual content lines instead."""
+    stripped = _clean_line(line)
+    if not stripped:
+        return True
+    norm = re.sub(r"[^a-z0-9\s]", " ", stripped.lower())
+    norm = re.sub(r"\s+", " ", norm).strip()
+    if norm in _SECTION_HEADINGS:
+        return True
+    if _CONTACT_RE.search(stripped):
+        return True
+    tokens = norm.split()
+    if len(tokens) <= 6 and stripped.upper() == stripped and not any(ch.isdigit() for ch in stripped):
+        return True
+    if "|" in stripped and re.search(r"relocat|moving\s+to|\bsponsorship\b", stripped, re.IGNORECASE):
+        return True
+    return False
 
 
 # --- personal-fact extraction (Stage-8 D2 / NEXT_5_PLAN N4) ------------------
@@ -183,7 +218,11 @@ class EvidenceChecker:
 
     # ------------------------------------------------------------------ rules
     def _check_numbers(self, generated_text: str, failures: list[dict]) -> None:
-        numbers = extract_numbers(generated_text)
+        numbers: set[str] = set()
+        for ln in generated_text.splitlines():
+            if _is_formatting_or_header_line(ln):
+                continue
+            numbers |= extract_numbers(ln)
         fabricated = sorted(numbers - self._verified_numbers)
         if fabricated:
             failures.append({
@@ -194,6 +233,8 @@ class EvidenceChecker:
 
     def _check_similarity(self, generated_text: str, failures: list[dict]) -> None:
         lines = [ln.strip(" -*•\t") for ln in generated_text.splitlines()]
+        lines = [_clean_line(ln) for ln in generated_text.splitlines()
+                 if not _is_formatting_or_header_line(ln)]
         lines = [ln for ln in lines if ln]
         for ln in lines:
             if len(ln) < self.min_line_length:

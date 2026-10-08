@@ -857,13 +857,14 @@ async def upload_resume(request: Request, file: UploadFile = File(...)):
         resume_id = await db.create_resume(
             name=resume_name,
             resume_text=resume_text,
-            is_default=len(existing_resumes) == 0,
+            is_default=False,
             search_terms=analysis["search_terms"],
             job_titles=analysis["job_titles"],
             key_skills=analysis["key_skills"],
             seniority=analysis.get("seniority", ""),
             summary=analysis.get("summary", ""),
     )
+    await db.set_default_resume(resume_id)
 
     return {
         "ok": True,
