@@ -41,7 +41,8 @@ class AshbyAdapter(JobSourceAdapter, BaseScraper):
         if custom:
             tokens = [c.strip() for c in custom.split(",")] if isinstance(custom, str) else list(custom)
             return [t for t in tokens if t]
-        return list(DEFAULT_COMPANIES)
+        from app.company_registry import board_tokens
+        return board_tokens("ashby") or list(DEFAULT_COMPANIES)
 
     async def health_check(self) -> dict:
         try:

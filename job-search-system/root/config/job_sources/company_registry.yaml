@@ -1,0 +1,39 @@
+# Public ATS board identifiers. Refresh this file as companies are validated;
+# adapters remain generic and never embed a large company list in Python.
+companies:
+  - id: cloudflare
+    name: Cloudflare
+    countries: [US, DE, SG, SE]
+    ats: {type: greenhouse, board: cloudflare}
+  - id: datadog
+    name: Datadog
+    countries: [US, DE, SG]
+    ats: {type: greenhouse, board: datadog}
+  - id: gitlab
+    name: GitLab
+    countries: [US, DE, SG, SE, REMOTE]
+    ats: {type: greenhouse, board: gitlab}
+  - id: vercel
+    name: Vercel
+    countries: [US, DE, SG, SE, REMOTE]
+    ats: {type: greenhouse, board: vercel}
+  - id: spotify
+    name: Spotify
+    countries: [SE, DE, SG, US]
+    ats: {type: lever, site: spotify}
+  - id: palantir
+    name: Palantir
+    countries: [US, DE, SG]
+    ats: {type: lever, site: palantir}
+  - id: linear
+    name: Linear
+    countries: [US, DE, SG, SE, REMOTE]
+    ats: {type: ashby, board: linear}
+  - id: ramp
+    name: Ramp
+    countries: [US, DE, SG]
+    ats: {type: ashby, board: ramp}
+  - id: openai
+    name: OpenAI
+    countries: [US, DE, SG, SE, REMOTE]
+    ats: {type: ashby, board: openai}

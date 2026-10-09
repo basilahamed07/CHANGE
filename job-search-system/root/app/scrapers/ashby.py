@@ -95,7 +95,8 @@ class AshbyScraper(BaseScraper):
             if isinstance(custom, str):
                 return [c.strip() for c in custom.split(",") if c.strip()]
             return list(custom)
-        return DEFAULT_COMPANIES
+        from app.company_registry import board_tokens
+        return board_tokens("ashby") or DEFAULT_COMPANIES
 
     def _matches_search(self, title: str, searchable: str) -> bool:
         for term in self.search_terms:
